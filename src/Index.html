@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600&family=Sarabun:wght@400;500;700&display=swap">
   <?!= include('Styles'); ?>
   <script>
+    window.PP_LOGO = <?!= JSON.stringify(logoUrl_()) ?>;
     // แสดงข้อผิดพลาดบนหน้าจอแทนการค้างที่ "กำลังโหลด…"
     window.ppFail = function (msg) {
       var b = document.querySelector('.boot'); if (!b) return;
@@ -20,7 +21,7 @@
 </head>
 <body>
   <div id="app">
-    <div class="boot"><span class="brand">PERFORMPRO</span><span class="muted">กำลังโหลด…</span><span class="small muted" id="bootStep">ขั้นที่ 1/4 · เปิดหน้าเว็บ</span><span class="small muted">เวอร์ชัน 3.3</span></div>
+    <div class="boot"><img class="boot-logo" src="<?= logoUrl_() ?>" alt="" onerror="this.remove()"><span class="brand">PERFORMPRO</span><span class="muted">กำลังโหลด…</span><span class="small muted" id="bootStep">ขั้นที่ 1/4 · เปิดหน้าเว็บ</span><span class="small muted">เวอร์ชัน 3.3</span></div>
   </div>
   <script>window.ppStep = function (t) { var el = document.getElementById('bootStep'); if (el) el.textContent = t; }; ppStep('ขั้นที่ 2/4 · โหลดหน้าเว็บแล้ว');</script>
   <div id="toast" class="toast" hidden></div>

@@ -102,13 +102,18 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
   }
 
   // ───────── login ─────────
+  // โลโก้จาก Supabase Storage (window.PP_LOGO ตั้งใน Index.html) · โหลดไม่ได้ → กลับไปแสดงตัว P
+  function logoHtml() {
+    const u = window.PP_LOGO || '';
+    return u ? `<span class="logo logo-img"><img src="${esc(u)}" alt="PerformPro" onerror="this.parentNode.classList.remove('logo-img');this.parentNode.textContent='P'"></span>` : '<span class="logo">P</span>';
+  }
   function loginView() {
     const L = S.login, ch = L.challenge, emp = L.tab === 'emp';
     $('#app').innerHTML = `
       <div class="login">
         <section class="login-hero">
           <span class="blob b1"></span><span class="blob b2"></span>
-          <div class="logo-row"><span class="logo">P</span><div><b>PERFORMPRO</b><span>ฝ่ายทรัพยากรบุคคล</span></div></div>
+          <div class="logo-row">${logoHtml()}<div><b>PERFORMPRO</b><span>ฝ่ายทรัพยากรบุคคล</span></div></div>
           <div class="hero-copy"><h1>ระบบประเมินผลการปฏิบัติงาน</h1><p>ประเมิน อนุมัติ และติดตามผลการประเมินประจำปีในที่เดียว แต่ละหน่วยงานเห็นเฉพาะข้อมูลของตนเอง</p></div>
           <span class="hero-foot">PerformPro</span>
         </section>
@@ -191,7 +196,7 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
   const navIc = k => `<svg class="nav-ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="${NAV_IC[k] || NAV_IC.forms}"/></svg>`;
   function nav() {
     const u = me(), inbox = S.list.filter(r => r.canAct).length;
-    $('#nav').innerHTML = `<div class="side-brand"><span class="logo">P</span><div><b>PERFORMPRO</b><span>ประเมินผลการปฏิบัติงาน</span></div></div>` +
+    $('#nav').innerHTML = `<div class="side-brand">${logoHtml()}<div><b>PERFORMPRO</b><span>ประเมินผลการปฏิบัติงาน</span></div></div>` +
       NAV[u.role].concat(S.boot.canAtt ? [['att', 'สถิติมาทำงาน']] : []).concat([['help', 'Help? คู่มือการใช้งาน']]).map(([k, l]) => {
         const cur = S.view === k || (k === 'list' && S.view === 'eval');
         return `<button class="nav-item" data-nav="${k}" title="${esc(l)}" ${cur ? 'aria-current="page"' : ''}><span class="nav-l">${navIc(k)}<span class="nav-t">${l}</span></span>${k === 'approve' && inbox ? `<span class="badge">${inbox}</span>` : ''}</button>`;
