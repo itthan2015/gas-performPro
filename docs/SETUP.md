@@ -99,7 +99,7 @@
 - ไฟล์เก็บใน Supabase Storage bucket `pformpro-attachments` (private) ข้อมูลไฟล์อยู่ในตาราง `PFormPro_attachments` เปิดดูผ่าน signed URL อายุ 1 ชั่วโมง
 - ผู้อัปโหลดได้: พนักงาน (ของตนเอง), ผู้ประเมิน / ผู้อนุมัติระดับฝ่าย / HR (เฉพาะพนักงานในขอบเขต) ลบได้เฉพาะผู้อัปโหลดหรือ HR
 - `schema.sql` สร้าง bucket ให้แล้ว ถ้า SQL Editor แจ้งว่าไม่มีสิทธิ์กับ `storage.buckets` ให้สร้าง bucket ชื่อ `pformpro-attachments` (ไม่เปิด public) ที่เมนู Storage เอง
-- โลโก้/favicon: รัน `setupLogo()` ใน Editor 1 ครั้ง → สร้าง bucket public `pformpro-public` และอัปโหลด `brand/favicon.png` (ใช้รูปอื่นได้โดยตั้ง Script Property `LOGO_URL`)
+- โลโก้/favicon: แอปเรียกรูปจาก Script Property `LOGO_URL` (Public URL ของไฟล์ใน Supabase Storage) · รัน `setupLogo()` ใน Editor 1 ครั้ง = สร้าง bucket public `pformpro-public` + อัปโหลด `brand/favicon.png` + ตั้ง `LOGO_URL` ให้ · หรืออัปโหลดรูปเองแล้วใส่ URL ใน `LOGO_URL` · ไม่ได้ตั้ง = แสดงตัว P
 
 ## สายการอนุมัติ
 ผู้ประเมินส่ง → อนุมัติระดับฝ่าย → อนุมัติระดับบริหาร → พนักงานรับทราบ → ฝ่ายบุคคลบันทึกคะแนน

@@ -25,7 +25,7 @@ function doGet() {
     .setTitle('PerformPro · ประเมินผลการปฏิบัติงาน')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-  var icon = logoUrl_(); // ไอคอนแท็บเบราว์เซอร์จาก Supabase Storage (ดู Brand.gs)
+  var icon = logoUrl_(); // Script Property LOGO_URL → รูปใน Supabase Storage (ดู Brand.gs)
   if (icon) { try { out.setFaviconUrl(icon); } catch (e) {} }
   return out;
 }
@@ -49,7 +49,9 @@ function testConnection() {
   });
   try { Logger.log('✓ รอบประเมินที่เปิดอยู่: ' + cycle_().name); } catch (e) { Logger.log('✗ ' + e.message); }
   try { storage_('get', 'bucket/' + BUCKET); Logger.log('✓ พบ Storage bucket ' + BUCKET); } catch (e) { Logger.log('✗ Storage bucket ' + BUCKET + ' : ' + e.message); }
-  try { var lr = UrlFetchApp.fetch(logoUrl_(), { muteHttpExceptions: true }).getResponseCode(); Logger.log((lr < 300 ? '✓' : '✗') + ' โลโก้ ' + logoUrl_() + ' (' + lr + ')' + (lr < 300 ? '' : ' → รัน setupLogo()')); } catch (e) { Logger.log('✗ โลโก้ : ' + e.message); }
+  var lu = logoUrl_();
+  if (!lu) Logger.log('✗ ยังไม่ได้ตั้ง Script Property LOGO_URL → รัน setupLogo() หรือใส่ Public URL ของรูปใน Supabase Storage');
+  else try { var lr = UrlFetchApp.fetch(lu, { muteHttpExceptions: true }).getResponseCode(); Logger.log((lr < 300 ? '✓' : '✗') + ' โลโก้ LOGO_URL = ' + lu + ' (' + lr + ')'); } catch (e) { Logger.log('✗ โลโก้ : ' + e.message); }
 }
 
 // ───────── Supabase REST / Storage ─────────

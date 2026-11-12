@@ -21,7 +21,7 @@
 </head>
 <body>
   <div id="app">
-    <div class="boot"><img class="boot-logo" src="<?= logoUrl_() ?>" alt="" onerror="this.remove()"><span class="brand">PERFORMPRO</span><span class="muted">กำลังโหลด…</span><span class="small muted" id="bootStep">ขั้นที่ 1/4 · เปิดหน้าเว็บ</span><span class="small muted">เวอร์ชัน 3.3</span></div>
+    <div class="boot"><? if (logoUrl_()) { ?><img class="boot-logo" src="<?= logoUrl_() ?>" alt="" onerror="this.remove()"><? } ?><span class="brand">PERFORMPRO</span><span class="muted">กำลังโหลด…</span><span class="small muted" id="bootStep">ขั้นที่ 1/4 · เปิดหน้าเว็บ</span><span class="small muted">เวอร์ชัน 3.3</span></div>
   </div>
   <script>window.ppStep = function (t) { var el = document.getElementById('bootStep'); if (el) el.textContent = t; }; ppStep('ขั้นที่ 2/4 · โหลดหน้าเว็บแล้ว');</script>
   <div id="toast" class="toast" hidden></div>
