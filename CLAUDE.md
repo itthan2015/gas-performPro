@@ -24,8 +24,9 @@
 - หน้า (App.html `PAGE_TH` / `v*()`): dash แดชบอร์ด · list รายชื่อพนักงาน · eval แบบประเมิน · approve รายการรออนุมัติ · report รายงาน · mine ผลของฉัน · weights แบบฟอร์มประเมิน · staff จัดการพนักงาน · att สถิติมาทำงาน · cycles รอบการประเมิน · help คู่มือ
 - เมนูตามบทบาท: `NAV` (+ att ถ้า `S.boot.canAtt`, + help ทุกบทบาท) · เมนูซ้ายหุบได้ (hamburger)
 - API (Code.gs): apiLoginStart/apiLoginAnswer/apiStaffLogin/apiLogout · apiBootstrap · apiListEmployees · apiGetEvaluation · apiSaveDraft/apiSubmit/apiApprove/apiReturn · apiReportList/apiReportGet · apiUploadFile/apiDeleteFile · apiAttList/apiAttSave · apiCycleList/Save/Activate/Delete · apiAdminData/apiSaveEmployee/apiImportEmployees/apiUnlock · apiAdd/Delete Division/Department, apiMoveDepartment · apiSetEmpView · apiSaveWeights (เลิกใช้)
-- ฟังก์ชันรันมือใน Editor: `testConnection`, `setupAdmin`, `setupDemoPasswords`
-- Script Properties: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `HR_UNITS` (ชื่อหน่วยงาน HR คั่น ,), `EMP_VIEW` (on/off), `EMP_VIEW_BY`
+- ฟังก์ชันรันมือใน Editor: `testConnection`, `setupAdmin`, `setupDemoPasswords`, `setupLogo`
+- Script Properties: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `HR_UNITS` (ชื่อหน่วยงาน HR คั่น ,), `EMP_VIEW` (on/off), `EMP_VIEW_BY`, `LOGO_URL` (ไม่บังคับ — ทับ favicon จาก Storage)
+- โลโก้/favicon: `Brand.gs` (`logoUrl_`, `setupLogo`) · ต้นฉบับ `assets/logo.svg`
 - แบบฟอร์ม (Scoring.gs `SCORING.FORMS`, rev.10.11.69): g1 · g2_tech · g2_sup · g2_adm · g3_dep · g3_techn · g3_tech2 · g3_off · g45 — เลือกอัตโนมัติจากเกรด+คำในตำแหน่ง (`formOf`) HR override รายคนได้
 - สายอนุมัติ: `skipDivStep(grade, pos)` ใน Scoring
 

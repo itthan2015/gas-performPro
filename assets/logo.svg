@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#4a2fc0"/>
+    </linearGradient>
+    <linearGradient id="ac" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#f97316"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="15" fill="url(#bg)"/>
+  <!-- กราฟแท่งขาขึ้น = ผลการปฏิบัติงานที่เติบโต -->
+  <rect x="12" y="36" width="10" height="16" rx="3" fill="#fff" fill-opacity=".6"/>
+  <rect x="27" y="27" width="10" height="25" rx="3" fill="#fff" fill-opacity=".8"/>
+  <rect x="42" y="18" width="10" height="34" rx="3" fill="#fff"/>
+  <!-- ดาว = ผลประเมินดีเด่น -->
+  <circle cx="17" cy="19" r="8" fill="url(#ac)"/>
+  <path d="M13.2 19.3l2.6 2.6 5-5.2" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

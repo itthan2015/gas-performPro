@@ -21,10 +21,13 @@ var QUESTIONS = {
 };
 
 function doGet() {
-  return HtmlService.createTemplateFromFile('Index').evaluate()
+  var out = HtmlService.createTemplateFromFile('Index').evaluate()
     .setTitle('PerformPro · ประเมินผลการปฏิบัติงาน')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  var icon = logoUrl_(); // ไอคอนแท็บเบราว์เซอร์จาก Supabase Storage (ดู Brand.gs)
+  if (icon) { try { out.setFaviconUrl(icon); } catch (e) {} }
+  return out;
 }
 function include(name) { return HtmlService.createHtmlOutputFromFile(name).getContent(); }
 function apiPing() { return true; }
@@ -46,6 +49,7 @@ function testConnection() {
   });
   try { Logger.log('✓ รอบประเมินที่เปิดอยู่: ' + cycle_().name); } catch (e) { Logger.log('✗ ' + e.message); }
   try { storage_('get', 'bucket/' + BUCKET); Logger.log('✓ พบ Storage bucket ' + BUCKET); } catch (e) { Logger.log('✗ Storage bucket ' + BUCKET + ' : ' + e.message); }
+  try { var lr = UrlFetchApp.fetch(logoUrl_(), { muteHttpExceptions: true }).getResponseCode(); Logger.log((lr < 300 ? '✓' : '✗') + ' โลโก้ ' + logoUrl_() + ' (' + lr + ')' + (lr < 300 ? '' : ' → รัน setupLogo()')); } catch (e) { Logger.log('✗ โลโก้ : ' + e.message); }
 }
 
 // ───────── Supabase REST / Storage ─────────
