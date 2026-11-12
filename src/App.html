@@ -1,0 +1,1035 @@
+<script>
+window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มระบบ');
+(function () {
+  const ROLES = { eval:'ผู้ประเมิน (หัวหน้าแผนก)', div:'ผู้อนุมัติระดับฝ่าย', exec:'ผู้บริหาร', hr:'ฝ่ายบุคคล (HR Admin)', admin:'ผู้ดูแลระบบ (Admin)', emp:'พนักงาน' };
+  const STAFF_ROLES = ['eval','div','exec','hr','admin'];
+  const ROLE_COLORS = { emp:['#f3f2f8','#3f3b55'], eval:['#eef4ff','#1d4ed8'], div:['#fff4ec','#9a3412'], exec:['#ecfdf5','#047857'], hr:['#f1edfd','#422aa0'], admin:['#1f1650','#ffffff'] };
+  const NAV = {
+    eval: [['list','พนักงานในความรับผิดชอบ'],['report','รายงานสรุปผล']],
+    div:  [['dash','แดชบอร์ด'],['approve','รายการรออนุมัติ'],['list','พนักงาน'],['report','รายงานสรุปผล']],
+    exec: [['dash','แดชบอร์ด'],['approve','รายการรออนุมัติ'],['list','พนักงาน'],['report','รายงานสรุปผล']],
+    hr:   [['dash','แดชบอร์ด'],['approve','รอบันทึกคะแนน'],['list','พนักงาน'],['report','รายงานสรุปผล'],['weights','แบบฟอร์มประเมิน'],['staff','จัดการพนักงาน']],
+    emp:  [['mine','ผลประเมินของฉัน']]
+  };
+  NAV.admin = [['dash','แดชบอร์ด'],['approve','รายการรออนุมัติ'],['list','พนักงาน'],['report','รายงานสรุปผล'],['weights','แบบฟอร์มประเมิน'],['staff','จัดการพนักงาน']];
+  NAV.hr.push(['cycles', 'รอบการประเมิน']); NAV.admin.push(['cycles', 'รอบการประเมิน']);
+  const APPROVE_LABEL = { div:'อนุมัติระดับฝ่าย', exec:'อนุมัติระดับบริหาร', ack:'รับทราบผล', hr:'บันทึกคะแนน' };
+  if (typeof SCORING === 'undefined') { window.ppFail && window.ppFail('ไม่พบไฟล์ ScoringClient กรุณาตรวจสอบว่าสร้างไฟล์ HTML ชื่อ ScoringClient แล้ว'); return; }
+  const ST = SCORING.STATUS;
+  const S = { token: null, login: { tab:'emp', code:'', challenge:null, err:'' }, boot:null, view:null, list:[], sel:null, f:{ q:'', st:'all', depts:[], act:'on' }, guide:false, errors:[], wDraft:null, adm:null, mg:{ tab:'emp', q:'', role:'all', act:'on', depts:[], d:null, err:'', newDiv:'', unitNew:{} }, prevOpen:null };
+  try { S.token = sessionStorage.getItem('pp_token'); } catch (e) {}
+
+  const $ = s => document.querySelector(s);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  const fmt = n => (Math.round((Number(n) || 0) * 100) / 100).toString();
+  const C4 = '';
+  const tag = st => { const x = ST[st] || [st ? String(st) : 'ยังไม่ประเมิน', 'tag-neutral']; return `<span class="tag ${x[1]}">${esc(x[0])}</span>`; };
+  const isSent = st => ['div','exec','ack','hr','done'].includes(st);
+  // รูปแบบวันที่ทั้งระบบ: dd/MM/yyyy (ปี พ.ศ.) — เปลี่ยน DATE_BE เป็น false ถ้าต้องการ ค.ศ.
+  const DATE_BE = true;
+  const p2 = n => String(n).padStart(2, '0');
+  function fmtD(v, empty) {
+    if (!v) return empty == null ? '-' : empty;
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(v));
+    if (m) return m[3] + '/' + m[2] + '/' + (Number(m[1]) + (DATE_BE ? 543 : 0));
+    const d = new Date(v); if (isNaN(d)) return String(v);
+    return p2(d.getDate()) + '/' + p2(d.getMonth() + 1) + '/' + (d.getFullYear() + (DATE_BE ? 543 : 0));
+  }
+  // dd/MM/yyyy → YYYY-MM-DD (รับปี พ.ศ. หรือ ค.ศ.) · ไม่ถูกต้อง = null
+  function parseD(s) {
+    s = String(s || '').trim(); if (!s) return '';
+    const m = /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/.exec(s); if (!m) return null;
+    let y = Number(m[3]); if (y > 2400) y -= 543;
+    const iso = y + '-' + p2(m[2]) + '-' + p2(m[1]), d = new Date(iso + 'T00:00:00');
+    return !isNaN(d) && d.getDate() === Number(m[1]) && d.getMonth() + 1 === Number(m[2]) ? iso : null;
+  }
+  const dateIn = (attr, iso) => `<input class="input" inputmode="numeric" maxlength="10" placeholder="dd/MM/yyyy" value="${esc(/^\d{4}-\d{2}-\d{2}$/.test(iso || '') ? fmtD(iso) : iso || '')}" data-date="1" ${attr}>`;
+  const thDate = iso => fmtD(iso, '...../...../.....');
+  const tenure = iso => { if (!iso) return '–'; const s = new Date(iso), n = new Date(); let y = n.getFullYear()-s.getFullYear(), m = n.getMonth()-s.getMonth(); if (n.getDate() < s.getDate()) m--; if (m < 0) { y--; m += 12; } return y + ' ปี ' + m + ' เดือน'; };
+  const me = () => S.boot.me;
+  const W = form => null; // ไม่ใช้น้ำหนักแล้ว (คะแนนตามแบบฟอร์ม rev.10.11.69)
+  const FN = f => formOf(f), FSHORT = f => FN(f).short, FNAME = f => f === 'new' ? 'แบบฟอร์มเดิม · ระดับ 1–3' : f === 'sup' ? 'แบบฟอร์มเดิม · ระดับ 4–5' : 'แบบประเมิน' + FN(f).name + ' (' + FN(f).short + ')';
+
+  function raw(fn, ...args) {
+    return new Promise((res, rej) => google.script.run.withSuccessHandler(res).withFailureHandler(e => rej(e))[fn](...args));
+  }
+  async function api(fn, ...args) {
+    try { return await raw(fn, S.token, ...args); }
+    catch (e) { if (String((e && e.message) || e).includes('SESSION_EXPIRED')) { signOut('หมดเวลาการใช้งาน กรุณาเข้าสู่ระบบอีกครั้ง'); } throw e; }
+  }
+  function setToken(t) { S.token = t; try { t ? sessionStorage.setItem('pp_token', t) : sessionStorage.removeItem('pp_token'); } catch (e) {} }
+  function signOut(msg) {
+    if (S.token) raw('apiLogout', S.token).catch(() => {});
+    setToken(null);
+    Object.assign(S, { boot:null, view:null, list:[], sel:null, adm:null, f:{ q:'', st:'all', depts:[] }, wDraft:null, login:{ tab:'emp', code:'', challenge:null, err: msg || '' } });
+    loginView();
+  }
+  let busyN = 0, toastT;
+  function busy(on) { busyN += on ? 1 : -1; $('#busy').hidden = busyN <= 0; }
+  // dialog แจ้ง "ระบบกำลังทำงาน" ระหว่างเปลี่ยนหน้า / โหลดข้อมูล (แสดงหลัง 150ms กันกระพริบเมื่อโหลดเร็ว)
+  const PAGE_TH = { dash:'แดชบอร์ด', list:'รายชื่อพนักงาน', eval:'แบบประเมิน', approve:'รายการรออนุมัติ', report:'รายงานสรุปผล', mine:'ผลประเมินของฉัน', weights:'แบบฟอร์มประเมิน', staff:'จัดการพนักงาน', att:'สถิติมาทำงาน', cycles:'รอบการประเมิน', help:'คู่มือการใช้งาน' };
+  let loadN = 0, loadT;
+  function loading(on, msg) {
+    const el = $('#loadDlg'); if (!el) return;
+    if (on && msg && loadN === 0) $('#loadMsg').textContent = msg;
+    loadN = Math.max(0, loadN + (on ? 1 : -1));
+    if (on) { if (loadN === 1) { clearTimeout(loadT); loadT = setTimeout(() => { if (loadN > 0) el.hidden = false; }, 150); } }
+    else if (!loadN) { clearTimeout(loadT); el.hidden = true; }
+  }
+  async function withLoading(msg, fn) { loading(true, msg); try { return await fn(); } finally { loading(false); } }
+  function toast(msg, err) { const t = $('#toast'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : ''); t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, err ? 5000 : 2600); }
+  async function run(promise, ok, msg) { busy(true); loading(true, msg || (ok ? 'กำลังบันทึกข้อมูล กรุณารอสักครู่…' : 'กำลังโหลดข้อมูล กรุณารอสักครู่…')); try { const r = await promise; if (ok) toast(ok); return r; } catch (e) { const m = (e && e.message) || String(e); if (!m.includes('SESSION_EXPIRED')) toast(m, true); throw e; } finally { busy(false); loading(false); } }
+
+  // ───────── shell ─────────
+  async function init() {
+    if (typeof SCORING === 'undefined') return window.ppFail('ไม่พบไฟล์ ScoringClient กรุณาตรวจสอบว่าสร้างไฟล์ HTML ชื่อ ScoringClient แล้ว');
+    if (typeof google === 'undefined' || !google.script) return window.ppFail('ต้องเปิดผ่าน URL ของ Web app ที่ deploy แล้วเท่านั้น');
+    if (!S.token) return loginView();
+    window.ppStep && window.ppStep('กำลังตรวจสอบการเข้าสู่ระบบเดิม…');
+    const ok = await Promise.race([raw('apiPing').then(() => true, () => false), new Promise(r => setTimeout(() => r(false), 12000))]);
+    if (!ok) { setToken(null); return loginView(); }
+    try {
+      S.boot = await api('apiBootstrap');
+      S.view = home();
+      shell();
+      await go(S.view);
+    } catch (e) {
+      const m = (e && e.message) || String(e);
+      if (m.includes('SESSION_EXPIRED')) return;
+      $('#app').innerHTML = `<div class="fatal card">${C4}<span class="kicker">PerformPro</span><h3>เข้าใช้งานไม่ได้</h3><p class="muted">${esc(m)}</p><button class="btn btn-primary" id="toLogin">กลับไปหน้าเข้าสู่ระบบ</button></div>`;
+      $('#toLogin').onclick = () => signOut();
+    }
+  }
+
+  // ───────── login ─────────
+  function loginView() {
+    const L = S.login, ch = L.challenge, emp = L.tab === 'emp';
+    $('#app').innerHTML = `
+      <div class="login">
+        <section class="login-hero">
+          <span class="blob b1"></span><span class="blob b2"></span>
+          <div class="logo-row"><span class="logo">P</span><div><b>PERFORMPRO</b><span>ฝ่ายทรัพยากรบุคคล</span></div></div>
+          <div class="hero-copy"><h1>ระบบประเมินผลการปฏิบัติงาน</h1><p>ประเมิน อนุมัติ และติดตามผลการประเมินประจำปีในที่เดียว แต่ละหน่วยงานเห็นเฉพาะข้อมูลของตนเอง</p></div>
+          <span class="hero-foot">PerformPro</span>
+        </section>
+        <section class="login-side">
+          <form class="login-card" id="loginForm" autocomplete="off">
+            <div><h2>เข้าสู่ระบบ</h2><span class="muted">เลือกประเภทผู้ใช้งาน</span></div>
+            <div class="tabs"><button type="button" data-tab="emp" ${emp ? 'aria-selected="true"' : ''}>พนักงาน</button><button type="button" data-tab="staff" ${!emp ? 'aria-selected="true"' : ''}>หัวหน้า / HR</button></div>
+            ${emp && ch ? `
+              <div class="who-box"><span>${esc(ch.code)}</span><b>คุณ${esc(ch.name)}</b></div>
+              <div class="field"><label>${esc(ch.question)}</label><input class="input lg" id="ans" inputmode="numeric" placeholder="${esc(ch.placeholder)}" autofocus></div>
+              <button class="btn btn-primary btn-xl" type="submit">ยืนยันตัวตน</button>
+              <button class="btn btn-ghost" type="button" id="changeCode" style="align-self:center">เปลี่ยนรหัสพนักงาน</button>` : `
+              <div class="field"><label>รหัสพนักงาน</label><input class="input lg" id="code" inputmode="numeric" placeholder="เช่น 38031" value="${esc(L.code)}" autofocus></div>
+              ${emp ? '<span class="small muted">ระบบจะสุ่มถามข้อมูลส่วนตัว 1 ข้อเพื่อยืนยันตัวตน</span>' : '<div class="field"><label>รหัสผ่าน</label><input class="input lg" id="pwd" type="password" placeholder="••••••"></div>'}
+              <button class="btn btn-primary btn-xl" type="submit">${emp ? 'ถัดไป' : 'เข้าสู่ระบบ'}</button>`}
+            ${L.err ? `<div class="alert">${esc(L.err)}</div>` : ''}
+            <span class="small muted">ตอบผิดได้ 3 ครั้ง หลังจากนั้นบัญชีจะถูกล็อกจนกว่าฝ่ายบุคคลจะปลดล็อก</span>
+          </form>
+        </section>
+      </div>`;
+    document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { S.login = { tab: b.dataset.tab, code: S.login.code, challenge: null, err: '' }; loginView(); });
+    const cc = $('#changeCode'); if (cc) cc.onclick = () => { S.login.challenge = null; S.login.err = ''; loginView(); };
+    $('#loginForm').onsubmit = async ev => {
+      ev.preventDefault();
+      const L = S.login;
+      if (loadN > 0) return;
+      const btn = ev.target.querySelector('[type="submit"]'); if (btn) btn.disabled = true;
+      busy(true);
+      loading(true, L.tab === 'emp' && !L.challenge ? 'กำลังตรวจสอบรหัสพนักงาน กรุณารอสักครู่…' : 'กำลังเข้าสู่ระบบ กรุณารอสักครู่…');
+      try {
+        if (L.tab === 'emp' && !L.challenge) { L.code = $('#code').value.trim(); L.challenge = await raw('apiLoginStart', L.code); L.err = ''; }
+        else if (L.tab === 'emp') { const r = await raw('apiLoginAnswer', L.challenge.challengeId, $('#ans').value); return enter(r.token); }
+        else { L.code = $('#code').value.trim(); const r = await raw('apiStaffLogin', L.code, $('#pwd').value); return enter(r.token); }
+      } catch (e) {
+        L.err = (e && e.message) || String(e);
+        if (L.err.includes('STAFF_ACCOUNT:')) { L.err = L.err.split('STAFF_ACCOUNT:')[1]; L.tab = 'staff'; L.challenge = null; }
+        if (/ล็อก|หมดอายุ/.test(L.err)) L.challenge = null;
+      } finally { busy(false); loading(false); }
+      loginView();
+    };
+  }
+  async function enter(token) { setToken(token); S.login = { tab:'emp', code:'', challenge:null, err:'' }; await withLoading('เข้าสู่ระบบสำเร็จ กำลังเตรียมข้อมูล กรุณารอสักครู่…', init); }
+
+  function home() { const r = me().role; return r === 'eval' ? 'list' : r === 'emp' ? 'mine' : 'dash'; }
+  function scopeOf(t, v) { if (t === 'all') return 'ทั้งบริษัท'; if (t === 'self') return 'เฉพาะตนเอง'; v = v || []; if (!v.length) return 'ยังไม่กำหนดหน่วยงาน'; return v.length <= 2 ? v.join(', ') : v[0] + ' และอีก ' + (v.length - 1) + ' หน่วยงาน'; }
+  function scopeText() { const u = me(); return scopeOf(u.scopeType, u.scopeValues); }
+
+  function shell() {
+    const c = S.boot.cycle, u = me();
+    $('#app').innerHTML = `
+      <div class="shell${S.navMin ? ' nav-min' : ''}">
+        <header class="top">
+          <button class="hamb" data-hamb title="ย่อ/ขยายเมนู" aria-label="ย่อ/ขยายเมนู"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+          <div class="brand-wrap"><span class="eyebrow">รอบการประเมิน</span><b>${esc(c.name)}</b></div><span class="small muted">สถิติ ${thDate(c.data_from)} – ${thDate(c.data_to)}</span>
+          <span class="tag tag-accent">ขอบเขต: ${esc(scopeText())}</span>
+        </header>
+        <nav class="side" id="nav"></nav>
+        <div class="nav-scrim" data-hamb></div>
+        <main class="main" id="main"></main>
+      </div>`;
+    $('.top').addEventListener('click', e => { if (e.target.closest('[data-hamb]')) toggleNav(); });
+    $('.nav-scrim').addEventListener('click', () => toggleNav(false));
+    $('#nav').addEventListener('click', e => { if (loadN > 0) return; if (e.target.closest('[data-logout]')) return signOut(); const b = e.target.closest('[data-nav]'); if (b) { if (isMobile()) toggleNav(false); go(b.dataset.nav); } });
+    const m = $('#main');
+    m.addEventListener('click', onClick);
+    m.addEventListener('input', onInput);
+    m.addEventListener('change', onChange);
+  }
+  // เมนูด้านซ้าย: จอกว้าง = ย่อเหลือไอคอน (จำค่าไว้) · จอเล็ก = เปิดเป็นลิ้นชักทับเนื้อหา
+  const isMobile = () => window.matchMedia('(max-width:900px)').matches;
+  S.navMin = (() => { try { return localStorage.getItem('pp_nav_min') === '1'; } catch (e) { return false; } })();
+  function toggleNav(force) {
+    const sh = $('.shell'); if (!sh) return;
+    if (isMobile()) { sh.classList.toggle('nav-open', force ?? !sh.classList.contains('nav-open')); return; }
+    S.navMin = force === false ? false : force === true ? true : !S.navMin;
+    sh.classList.toggle('nav-min', S.navMin);
+    try { localStorage.setItem('pp_nav_min', S.navMin ? '1' : '0'); } catch (e) {}
+  }
+  const NAV_IC = { dash:'M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z', approve:'M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9', list:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8', mine:'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8', report:'M3 3v18h18M7 16v-5M12 16V8M17 16v-8', forms:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5', weights:'M12 3v18M5 8h14M5 8l-3 7a4 4 0 0 0 6 0zM19 8l-3 7a4 4 0 0 0 6 0z', staff:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M22 11h-6', cycles:'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z', att:'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M12 6v6l4 2', help:'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01' };
+  const navIc = k => `<svg class="nav-ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="${NAV_IC[k] || NAV_IC.forms}"/></svg>`;
+  function nav() {
+    const u = me(), inbox = S.list.filter(r => r.canAct).length;
+    $('#nav').innerHTML = `<div class="side-brand"><span class="logo">P</span><div><b>PERFORMPRO</b><span>ประเมินผลการปฏิบัติงาน</span></div></div>` +
+      NAV[u.role].concat(S.boot.canAtt ? [['att', 'สถิติมาทำงาน']] : []).concat([['help', 'Help? คู่มือการใช้งาน']]).map(([k, l]) => {
+        const cur = S.view === k || (k === 'list' && S.view === 'eval');
+        return `<button class="nav-item" data-nav="${k}" title="${esc(l)}" ${cur ? 'aria-current="page"' : ''}><span class="nav-l">${navIc(k)}<span class="nav-t">${l}</span></span>${k === 'approve' && inbox ? `<span class="badge">${inbox}</span>` : ''}</button>`;
+      }).join('') +
+      `<div class="foot"><span class="avatar">${esc((u.name || '?').trim().charAt(0))}</span><div class="who"><b>${esc(u.name)}</b><span>${ROLES[u.role]}</span></div><button class="logout" data-logout title="ออกจากระบบ">ออก</button></div>`;
+  }
+
+  async function go(view) { return withLoading('กำลังเปิดหน้า ' + (PAGE_TH[view] || '') + ' กรุณารอสักครู่…', () => goNow(view)); }
+  async function goNow(view) {
+    S.view = view; S.errors = [];
+    if (['dash','list','approve','report'].includes(view) || !S.list.length) S.list = await run(api('apiListEmployees'));
+    if (view === 'mine') S.sel = await run(api('apiGetEvaluation', me().empCode));
+    if (view === 'staff') S.adm = await run(api('apiAdminData'));
+    if (view === 'cycles') { S.cy = await run(api('apiCycleList')); S.cyD = null; }
+    if (view === 'att') { S.att = await run(api('apiAttList')); S.attD = {}; S.attMsg = null; }
+    if (view === 'report' && me().role !== 'emp') { S.rp = await run(api('apiReportList', S.rp ? S.rp.cycleId : null)); S.rpHist = null; if (S.sel && !S.rp.rows.some(r => r.code === S.sel.emp.code) || S.rp.cycleId !== S.rp.activeId) S.sel = null; }
+    if (view === 'report' && S.sel && !S.list.find(r => r.code === S.sel.emp.code)) S.sel = null;
+    render();
+    window.scrollTo(0, 0);
+  }
+  async function openEval(code) { return withLoading('กำลังเปิดแบบประเมิน กรุณารอสักครู่…', async () => { S.sel = await run(api('apiGetEvaluation', code)); S.view = 'eval'; S.errors = []; render(); window.scrollTo(0, 0); }); }
+
+  function render() {
+    nav();
+    const V = { dash: vDash, list: vList, eval: vEval, approve: vApprove, report: vReport, mine: vMine, weights: vWeights, staff: vStaff, att: vAtt, cycles: vCycles, help: vHelp }[S.view] || vList;
+    try { $('#main').innerHTML = V(); }
+    catch (err) { console.error(err); $('#main').innerHTML = `<div class="page"><div class="card"><span class="card-title">แสดงหน้านี้ไม่สำเร็จ</span><span class="small muted">${esc(err && err.message || err)}</span><button class="btn" style="align-self:flex-start" onclick="location.reload()">โหลดหน้าใหม่</button></div></div>`; }
+    document.querySelectorAll('[data-indet]').forEach(el => el.indeterminate = true);
+  }
+  S.upOpen = {};
+  document.addEventListener('toggle', e => { const k = e.target && e.target.dataset && e.target.dataset.upkey; if (k) S.upOpen[k] = e.target.open; }, true);
+
+  // ───────── dashboard ─────────
+  const ACT_OPTS = [['on','ปกติ'],['off','ลาออก'],['all','ทั้งหมด']];
+  function actOk(r, v) { const on = r.isactive !== false && r.active !== false; if (v === 'check') return r.status === 'check'; return !v || v === 'all' || (v === 'on') === on; }
+  function actSeg(key, cur, list) { return `<div class="seg" title="สถานะพนักงาน (isactive)">${ACT_OPTS.map(([v, l]) => `<label><input type="radio" name="act-${key}" value="${v}" data-act-f="${key}" ${cur === v ? 'checked' : ''}>${l}${list ? ` <span style="opacity:.7">${list.filter(r => actOk(r, v)).length}</span>` : ''}</label>`).join('')}</div>`; }
+  function filtered() { const ds = S.f.depts; return S.list.filter(r => (!ds.length || ds.includes(r.dept)) && actOk(r, S.f.act)); }
+  // ตัวเลือกหน่วยงานแบบช่องติ๊ก แยกกลุ่มตามฝ่าย → แผนก (ติ๊กชื่อฝ่าย = เลือกทุกแผนกในฝ่าย)
+  function deptDivMap() {
+    const m = {}, U = (S.adm && S.adm.units) || S.boot.units || {};
+    Object.keys(U).forEach(dv => U[dv].forEach(dp => m[dp] = dv));
+    [S.list, S.rp && S.rp.rows, S.att && S.att.rows, S.adm && S.adm.emps].forEach(a => (a || []).forEach(r => { if (r.dept && r.div && !m[r.dept]) m[r.dept] = r.div; }));
+    return m;
+  }
+  function unitGroups(depts) {
+    const m = deptDivMap(), g = {};
+    depts.forEach(dp => { const dv = m[dp] || 'ไม่ระบุฝ่าย'; (g[dv] = g[dv] || []).push(dp); });
+    return Object.keys(g).sort((a, b) => a.localeCompare(b, 'th')).map(dv => ({ dv, depts: g[dv].sort((a, b) => a.localeCompare(b, 'th')) }));
+  }
+  function unitPicker(groups, sel, key, o) {
+    o = o || {};
+    const total = groups.reduce((n, g) => n + g.depts.length, 0), open = o.open || (S.upOpen && S.upOpen[key]);
+    const summary = sel.length ? `เลือก ${sel.length} จาก ${total} ${o.divOnly ? 'ฝ่าย' : 'แผนก'}` : (o.empty || 'ทั้งหมด');
+    const body = o.divOnly
+      ? `<div class="ug-items">${groups.map(g => `<label class="ck"><input type="checkbox" data-chip="${key}" value="${esc(g.dv)}" ${sel.includes(g.dv) ? 'checked' : ''}><span>${esc(g.dv)}</span></label>`).join('')}</div>`
+      : groups.map(g => { const n = g.depts.filter(x => sel.includes(x)).length;
+          return `<div class="ug"><label class="ck ug-head"><input type="checkbox" data-chipdiv="${key}" ${n && n === g.depts.length ? 'checked' : ''} ${n && n < g.depts.length ? 'data-indet="1"' : ''}><span>${esc(g.dv)}</span><span class="ug-n">${n ? n + '/' : ''}${g.depts.length}</span></label>
+            <div class="ug-items">${g.depts.map(x => `<label class="ck"><input type="checkbox" data-chip="${key}" value="${esc(x)}" ${sel.includes(x) ? 'checked' : ''}><span>${esc(x)}</span></label>`).join('')}</div></div>`; }).join('');
+    return `<details class="unit-pick" data-upkey="${key}" ${open ? 'open' : ''}><summary><span class="small muted">${esc(o.label || 'หน่วยงาน')}</span><b>${summary}</b>${sel.length ? `<button type="button" class="btn btn-ghost small" data-act="clearChips" data-key="${key}">ล้าง</button>` : ''}</summary><div class="ug-wrap">${body}</div></details>`;
+  }
+  function deptChips(list, sel, key) {
+    if (list.length < 2) return '';
+    return unitPicker(unitGroups(list), sel, key);
+  }
+  function divSelect() { return deptChips([...new Set(S.list.map(r => r.dept).filter(Boolean))], S.f.depts, 'f'); }
+  function vDash() {
+    const L = filtered(), sent = L.filter(r => isSent(r.status)), pend = L.filter(r => ['div','exec','ack','hr'].includes(r.status));
+    const avg = a => a.length ? fmt(a.reduce((s, r) => s + (r.total || 0), 0) / a.length) : '–';
+    const kpi = (l, v, s, c) => `<div class="kpi kpi-${c}"><span class="kpi-l">${l}</span><span class="kpi-v">${v}</span><span class="kpi-s">${s}</span></div>`;
+    const dist = (form, G, title) => {
+      const a = sent.filter(r => r.form === form), cnt = G.map(g => a.filter(r => r.grade === g[0]).length), mx = Math.max(1, ...cnt);
+      return `<div class="card">${C4}<div class="part-head"><span class="card-title">${title}</span><span class="small muted nowrap">${a.length} คนที่ส่งแล้ว</span></div>
+        ${G.map((g, i) => `<div style="display:grid;grid-template-columns:44px 110px minmax(0,1fr) 32px;align-items:center;gap:10px;font-size:13px"><b style="font-family:var(--fh);font-weight:500;font-size:18px">${g[0]}</b><span class="muted">${g[1]}</span><div class="hbar"><i style="width:${Math.round(cnt[i] / mx * 100)}%"></i></div><span class="right">${cnt[i]}</span></div>`).join('')}</div>`;
+    };
+    const depts = [...new Set(L.map(r => r.dept))].map(d => { const a = L.filter(r => r.dept === d), s = a.filter(r => isSent(r.status)); return { d, div: a[0].div, n: a.length, s: s.length, done: a.filter(r => r.status === 'done').length, pct: Math.round(s.length / a.length * 100), avg: avg(s) }; });
+    return `<div class="page">
+      <div class="page-head"><div><h2>แดชบอร์ดผลการประเมิน</h2><span class="small muted">ขอบเขต: ${esc(scopeText())}</span></div><div class="toolbar">${actSeg('f', S.f.act, S.list)}${divSelect()}</div></div>
+      <div class="grid-kpi">
+        ${kpi('พนักงานในขอบเขต', L.length, esc(S.f.depts.length ? 'เลือก ' + S.f.depts.length + ' หน่วยงาน' : scopeText()), 'violet')}
+        ${kpi('ส่งแบบประเมินแล้ว', sent.length, Math.round(sent.length / Math.max(1, L.length) * 100) + '% ของทั้งหมด', 'orange')}
+        ${kpi('ระหว่างอนุมัติ', pend.length, 'รอคุณดำเนินการ ' + L.filter(r => r.canAct).length + ' รายการ', 'blue')}
+        ${kpi('คะแนนเฉลี่ย', avg(sent), 'จาก 100 คะแนน', 'green')}
+      </div>
+      <div class="grid-2">${dist('new', SCORING.GR_NEW, 'การกระจายเกรด · ระดับ 1–3')}${dist('sup', SCORING.GR_SUP, 'การกระจายเกรด · ระดับ 4–5')}</div>
+      <div class="card">${C4}<span class="card-title">ความคืบหน้ารายแผนก</span>
+        <div class="scroll-x"><table class="table"><thead><tr><th>แผนก</th><th>ฝ่าย</th><th>พนักงาน</th><th>ส่งแล้ว</th><th style="min-width:140px">ความคืบหน้า</th><th>เสร็จสิ้น</th><th>คะแนนเฉลี่ย</th></tr></thead>
+        <tbody>${depts.map(r => `<tr><td>${esc(r.d)}</td><td class="muted">${esc(r.div)}</td><td>${r.n}</td><td>${r.s}</td><td><div class="bar"><i style="width:${r.pct}%"></i></div></td><td>${r.done}</td><td>${r.avg}</td></tr>`).join('')}</tbody></table></div>
+      </div>
+    </div>`;
+  }
+
+  // ───────── list ─────────
+  const GROUPS = { all: () => true, todo: s => ['none','draft','returned'].includes(s), pending: s => ['div','exec','ack','hr'].includes(s), done: s => s === 'done' };
+  function actionOf(r) { return r.canEdit ? (r.status === 'none' ? 'เริ่มประเมิน' : 'แก้ไข') : r.canAct ? 'ตรวจสอบ' : 'ดู'; }
+  function vList() {
+    const base = filtered(), q = S.f.q.trim();
+    const rows = base.filter(r => (!q || r.name.includes(q) || r.code.includes(q)) && GROUPS[S.f.st](r.status));
+    const opts = [['all','ทั้งหมด'],['todo','รอประเมิน'],['pending','ระหว่างอนุมัติ'],['done','เสร็จสิ้น']];
+    return `<div class="page">
+      <div><h2>${me().role === 'eval' ? 'พนักงานในความรับผิดชอบ' : 'พนักงาน'}</h2><span class="small muted">ขอบเขต: ${esc(scopeText())} · ${rows.length} รายการ</span></div>
+      <div class="toolbar">
+        <input class="input" style="flex:1 1 220px;max-width:320px" placeholder="ค้นหาชื่อ หรือรหัสพนักงาน" value="${esc(S.f.q)}" data-input="q">
+        <div class="seg">${opts.map(([v, l]) => `<label><input type="radio" name="stf" value="${v}" data-change="st" ${S.f.st === v ? 'checked' : ''}>${l} <span style="opacity:.7">${base.filter(r => GROUPS[v](r.status)).length}</span></label>`).join('')}</div>
+        ${actSeg('f', S.f.act, S.list)}
+        ${divSelect()}
+      </div>
+      <div class="scroll-x" style="border-top:1px solid var(--divider)">
+        <table class="table"><thead><tr><th>รหัส</th><th>ชื่อ-นามสกุล</th><th>ตำแหน่ง</th><th>ระดับ</th><th>แผนก</th><th>แบบฟอร์ม</th><th>สถานะ</th><th>คะแนน</th><th>เกรด</th><th></th></tr></thead>
+        <tbody>${rows.map(r => `<tr class="click" data-act="open" data-code="${esc(r.code)}">
+          <td class="muted">${esc(r.code)}</td><td class="nowrap" style="font-weight:500">${esc(r.name)}</td><td>${esc(r.pos)}</td><td>${r.level}</td><td>${esc(r.dept)}</td>
+          <td><span class="tag tag-neutral nowrap">${esc(FSHORT(r.fcode || r.form))}</span></td><td>${tag(r.status)}</td>
+          <td>${r.total != null ? fmt(r.total) : '–'}</td><td style="font-family:var(--fh);font-size:18px">${isSent(r.status) && r.grade ? esc(r.grade) : '–'}</td>
+          <td><button class="btn ${r.canEdit || r.canAct ? 'btn-primary' : ''}" data-act="open" data-code="${esc(r.code)}">${actionOf(r)}</button></td></tr>`).join('')}</tbody></table>
+        ${rows.length ? '' : '<p class="empty">ไม่พบพนักงานตามเงื่อนไข</p>'}
+      </div>
+    </div>`;
+  }
+
+  // ───────── evaluation ─────────
+  function chainOf(sel) {
+    const idx = { div:1, exec:2, ack:3, hr:4, done:5 }[sel.status] || 0;
+    const skip = sel.emp.skipDiv ?? skipDivStep(sel.emp.level, sel.emp.pos), hasDiv = (sel.history || []).some(y => y.step === 'div');
+    // แบบประเมินที่ส่งก่อนเปลี่ยนกติกา (ผ่านขั้นฝ่ายไปแล้วโดยไม่มีผู้อนุมัติฝ่าย) ไม่แสดงขั้นฝ่าย
+    const showDiv = hasDiv || (!skip && !(idx >= 2 && !hasDiv));
+    return SCORING.STEPS.map((s, i) => ({ s, i })).filter(x => x.s[0] !== 'div' || showDiv).map((x, n) => {
+      const h = [...sel.history].reverse().find(y => y.step === x.s[0]);
+      const done = x.i < idx, cur = x.i === idx;
+      return { n: n + 1, label: x.s[1], cls: done ? 'done' : cur ? 'cur' : '', by: done && h ? h.actor_name : (x.s[0] === 'ack' ? sel.emp.name : '..............................'), at: done && h ? thDate(h.created_at) : '...../...../.....', meta: done && h ? (h.actor_name + ' · ' + thDate(h.created_at)) : cur ? 'ขั้นตอนปัจจุบัน' : 'รอดำเนินการ' };
+    });
+  }
+  const STEP_ROLE = { submit:'ผู้ประเมิน (หัวหน้าแผนก)', div:'ผู้อนุมัติระดับฝ่าย', exec:'ผู้บริหาร', ack:'พนักงาน', hr:'ฝ่ายบุคคล (HR Admin)' };
+  const fmtDT = v => { if (!v) return ''; const d = new Date(v); return isNaN(d) ? fmtD(v) : fmtD(v) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()) + ' น.'; };
+  function timelineHTML(sel) {
+    const chain = chainOf(sel), H = sel.history || [];
+    const ev = H.map(x => ({ k: x.step, t: x.label || (SCORING.STEPS.find(s => s[0] === x.step) || [, x.step])[1], by: x.actor_name, at: x.created_at, note: x.note, ret: x.step === 'return' || /ส่งกลับ/.test(x.label || '') }));
+    const done = new Set(chain.filter(c => c.cls === 'done').map(c => c.label));
+    const pending = chain.filter(c => c.cls !== 'done');
+    const dot = (cls, n) => `<span style="flex:none;width:28px;height:28px;display:grid;place-items:center;border-radius:50%;font-size:13px;font-weight:600;${cls === 'done' ? 'background:var(--accent);color:#fff' : cls === 'ret' ? 'background:var(--warn-bg,#fff4ec);color:var(--warn);border:1px solid var(--warn)' : cls === 'cur' ? 'background:var(--paper,#fff);color:var(--accent);border:2px solid var(--accent);box-shadow:0 0 0 4px var(--a100)' : 'background:var(--paper,#fff);color:var(--n500,#888);border:1px solid var(--divider)'}">${n}</span>`;
+    const item = (d, title, lines, last) => `<div style="display:flex;gap:12px;position:relative;padding-bottom:${last ? 0 : 18}px">${last ? '' : '<span style="position:absolute;left:13.5px;top:30px;bottom:0;width:1px;background:var(--divider)"></span>'}${d}<div style="display:flex;flex-direction:column;gap:2px;min-width:0;padding-top:3px"><span style="font-weight:600;font-size:14px">${title}</span>${lines}</div></div>`;
+    const rows = [];
+    ev.forEach(x => rows.push([dot(x.ret ? 'ret' : 'done', x.ret ? '↩' : '✓'), esc(x.t),
+      `<span class="small">โดย <b style="font-weight:600">${esc(x.by || '-')}</b>${STEP_ROLE[x.k] ? ' · ' + STEP_ROLE[x.k] : ''}</span><span class="small muted">${fmtDT(x.at)}</span>${x.note ? `<span class="small" style="padding:6px 10px;margin-top:4px;border-left:2px solid ${x.ret ? 'var(--warn)' : 'var(--a300)'};background:var(--a100)">${esc(x.note)}</span>` : ''}`]));
+    pending.forEach(c => { const k = (SCORING.STEPS.find(s => s[1] === c.label) || [])[0];
+      rows.push([dot(c.cls, c.n), esc(c.label), `<span class="small ${c.cls === 'cur' ? '' : 'muted'}">${c.cls === 'cur' ? 'ขั้นตอนปัจจุบัน · ' : 'รอดำเนินการ · '}ผู้รับผิดชอบ: ${STEP_ROLE[k] || '-'}${k === 'ack' ? ' (' + esc(sel.emp.name) + ')' : ''}</span>`]); });
+    if (!rows.length) return '<span class="small muted">ยังไม่มีการดำเนินการ</span>';
+    return `<div style="display:flex;flex-direction:column">${rows.map((r, i) => item(r[0], r[1], r[2], i === rows.length - 1)).join('')}</div>`;
+  }
+  // ───────── Help? คู่มือการใช้งาน ─────────
+  function vHelp() {
+    const role = me().role, tab = S.helpTab || (role === 'emp' ? 'emp' : 'flow');
+    const T = [['flow','ขั้นตอนการประเมิน'],['score','วิธีคำนวณคะแนน'],['grade','เกรด A+ … F / 5 … 1'],['emp','สำหรับพนักงาน'],['hr','สำหรับ HR / Admin'],['faq','คำถามที่พบบ่อย']];
+    const card = (k, title, body) => `<section class="card" style="gap:12px">${C4}${k ? `<span class="kicker">${k}</span>` : ''}<span class="card-title">${title}</span>${body}</section>`;
+    const ex = (t, b) => `<div style="border:1px dashed var(--a300);padding:12px 14px;display:flex;flex-direction:column;gap:6px;font-size:14px"><span class="kicker">ตัวอย่าง</span>${t ? `<b style="font-weight:600">${t}</b>` : ''}${b}</div>`;
+    const steps = list => `<ol style="margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;font-size:14px">${list.map(x => `<li>${x}</li>`).join('')}</ol>`;
+    const tbl = (head, rows) => `<div class="scroll-x"><table class="table" style="font-size:13px"><thead><tr>${head.map(x => `<th>${x}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    const F1 = SCORING.FORMS.g1;
+    let body = '';
+    if (tab === 'flow') body = card('ภาพรวม', 'ขั้นตอนการประเมิน 1 รอบ', `
+        ${steps([
+          '<b>HR เปิดรอบการประเมิน</b> — เมนู รอบการประเมิน → เพิ่มรอบใหม่ กำหนดช่วงข้อมูล (dd/MM/yyyy) แล้วกด "เปิดใช้รอบนี้"',
+          '<b>HR บันทึกสถิติมาทำงาน</b> — เมนู สถิติมาทำงาน กรอกหรือนำเข้า CSV (มาสาย ลาป่วย ลากิจ ขาดงาน ใบเตือน) ระบบคำนวณหัวข้อ การรักษาระเบียบวินัย ให้อัตโนมัติ',
+          '<b>ผู้ประเมิน (หัวหน้าแผนก) ให้คะแนน</b> — เมนู พนักงานในความรับผิดชอบ → เลือกพนักงาน → แต่ละข้อ เลือก "ลักษณะผลการประเมิน" แล้วเลือกคะแนนในช่วงนั้น → กด "ส่งแบบประเมิน"',
+          '<b>ผู้อนุมัติระดับฝ่าย</b> — เมนู รายการรออนุมัติ ตรวจคะแนน กด "อนุมัติระดับฝ่าย" หรือ "ส่งกลับแก้ไข" พร้อมเหตุผล (ข้ามขั้นนี้เฉพาะพนักงานเกรด 5 ขึ้นไป หรือตำแหน่งหัวหน้าฝ่าย — ส่งผู้บริหารอนุมัติโดยตรง)',
+          '<b>ผู้บริหาร</b> — อนุมัติระดับบริหาร หรือส่งกลับแก้ไข',
+          '<b>พนักงานรับทราบผล</b> — พนักงานเข้าสู่ระบบด้วยรหัสพนักงาน + ข้อมูลยืนยันตัวตน แล้วกด "รับทราบผล" (ถ้า HR เปิดให้ดูผล)',
+          '<b>ฝ่ายบุคคลบันทึกคะแนน</b> — HR ตรวจและกดบันทึก สถานะเป็น "เสร็จสิ้น" ผลจะไปอยู่ในผลประเมินฉบับก่อนหน้าของรอบถัดไป'
+        ])}
+        ${ex('ตัวอย่าง Timeline ของนายสมชาย (เกรด 1)', `<span>✓ ผู้ประเมินส่งแบบประเมิน — โดย หัวหน้าแผนกผลิต 1 · 03/11/2569 09:12 น.</span><span>↩ ส่งกลับแก้ไข — โดย หัวหน้าฝ่ายผลิต · "ข้อ 3 ขอเหตุผลประกอบ" · 04/11/2569</span><span>✓ ผู้ประเมินส่งแบบประเมิน (ครั้งที่ 2) — 04/11/2569</span><span>✓ อนุมัติระดับฝ่าย — โดย หัวหน้าฝ่ายผลิต · 05/11/2569</span><span>② อนุมัติระดับบริหาร — ขั้นตอนปัจจุบัน · ผู้รับผิดชอบ: ผู้บริหาร</span>`)}
+        <span class="small muted">ดูสายการอนุมัติแบบ Timeline ได้ที่หน้าแบบประเมินของแต่ละคน (ด้านขวา) — แสดงผู้ดำเนินการ วันเวลา และเหตุผลที่ส่งกลับทุกครั้ง</span>`);
+    if (tab === 'score') body = card('สูตร', 'วิธีคำนวณคะแนน', `
+        <div style="font-size:15px;padding:12px 14px;background:var(--a100);font-weight:500">คะแนนรวม = ผลรวมคะแนนทุกหัวข้อ + คะแนนการรักษาระเบียบวินัย <span class="small muted">(เต็ม 100)</span></div>
+        <b style="font-weight:600">1) หัวข้อการประเมิน</b>
+        <span style="font-size:14px">แต่ละข้อมี "ลักษณะผลการประเมิน" 3–4 ระดับ แต่ละระดับมีช่วงคะแนน ผู้ประเมินเลือกระดับก่อน แล้วเลือกคะแนนภายในช่วงนั้น (ไม่ถ่วงน้ำหนัก ใช้คะแนนตรงตามแบบฟอร์ม)</span>
+        ${ex('ข้อ 1 ' + esc(F1.c[0].t) + ' (เต็ม ' + F1.c[0].max + ')', tbl(['ลักษณะผลการประเมิน', 'ช่วงคะแนน'], F1.c[0].o.map(o => [esc(o[0]), o[1] + ' – ' + o[2]])) + '<span>เลือก "งานมีคุณภาพ ถูกต้อง ตามมาตรฐานกำหนด" → เลือกคะแนนได้ 16, 17 หรือ 18 → เลือก <b>17</b></span>')}
+        <b style="font-weight:600">2) การรักษาระเบียบวินัย (คำนวณอัตโนมัติจากสถิติมาทำงาน)</b>
+        ${tbl(['เกรด', 'คะแนนเต็ม'], [['เกรด 1', '30'], ['เกรด 2', '20'], ['เกรด 3', '10'], ['เกรด 4–5', '5']])}
+        ${tbl(['รายการ', 'เงื่อนไขหักคะแนน'], SCORING.DISC_RULES.map(r => [r[1] + ' (' + r[2] + ')', r[3] + ' คะแนน']))}
+        <span class="small muted">คะแนน = คะแนนเต็ม − คะแนนที่ถูกหัก (ไม่ต่ำกว่า 0) · มาสายคิดเป็นชั่วโมงจากนาที ÷ 60</span>
+        ${ex('นายสมชาย เกรด 1 (เต็ม 30) · ลากิจ 3 + ลาป่วย 2 = 5 วัน · มาสาย 90 นาที · ใบเตือนวาจา 1 ครั้ง', tbl(['รายการ', 'คำนวณ', 'หัก'], [['ลา 5 วัน', 'เกิน 3 วัน = 2 วัน × 1', '2'], ['มาสาย 90 นาที = 1.5 ชม.', '1.5 × 0.5', '0.75'], ['ขาดงาน 0 + ใบเตือน 1', '1 × 5', '5'], ['<b>รวมหัก</b>', '', '<b>7.75</b>']]) + '<span>คะแนนการรักษาระเบียบวินัย = 30 − 7.75 = <b>22.25</b></span>')}
+        <b style="font-weight:600">3) ตัวอย่างคะแนนรวม (แบบฟอร์มเกรด 1)</b>
+        ${ex('', tbl(['ข้อ', 'หัวข้อ', 'คะแนน', 'เต็ม'], F1.c.map((p, i) => [i + 1, esc(p.t), [17, 8, 8, 8, 8, 7][i], p.max]).concat([[7, 'การรักษาระเบียบวินัย', '22.25', 30], ['', '<b>รวมผลคะแนนประเมิน</b>', '<b>78.25</b>', 100]])) + '<span>78.25 อยู่ในช่วง 75 – 79.99 → <b>เกรด B (ดี)</b></span>')}`);
+    if (tab === 'grade') body = card('เกณฑ์', 'การตัดเกรดจากคะแนนรวม', `
+        <b style="font-weight:600">พนักงานเกรด 1–3 (A+ … F)</b>${tbl(['เกรด', 'ระดับ', 'คะแนนรวม', 'ความหมาย'], SCORING.GR_NEW.map(g => ['<b>' + g[0] + '</b>', g[1], g[2], '<span class="small">' + esc(g[3] || '') + '</span>']))}
+        <b style="font-weight:600">พนักงานเกรด 4–5 (5 … 1)</b>${tbl(['เกรด', 'ระดับ', 'คะแนนรวม', 'ความหมาย'], SCORING.GR_SUP.map(g => ['<b>' + g[0] + '</b>', g[1], g[2], '<span class="small">' + esc(g[3] || '') + '</span>']))}
+        ${ex('', '<span>คะแนนรวม 86.5 (เกรด 2) → อยู่ในช่วง 85 – 94.99 → <b>A ดีมาก</b></span><span>คะแนนรวม 86.5 (เกรด 4) → อยู่ในช่วง 85 – 89.99 → <b>4</b></span><span>คะแนนรวม 94.99 → A (ยังไม่ถึง 95 จึงไม่ใช่ A+) · ระบบปัดทศนิยม 2 ตำแหน่งก่อนตัดเกรด</span>')}`);
+    if (tab === 'emp') body = card('พนักงาน', 'การเข้าใช้งานสำหรับพนักงาน', `
+        ${steps(['หน้าเข้าสู่ระบบ เลือกแท็บ "พนักงาน" ใส่ <b>รหัสพนักงาน</b> แล้วกด ถัดไป', 'ตอบคำถามยืนยันตัวตนที่ระบบสุ่ม เช่น <b>4 ตัวท้ายเลขบัตรประชาชน</b>, วันเกิด (dd/MM/yyyy พ.ศ.) หรือ 4 ตัวท้ายเบอร์โทร', 'ตอบผิดเกิน 3 ครั้ง บัญชีจะถูกล็อก ติดต่อ HR เพื่อปลดล็อก', 'เมนู ผลประเมินของฉัน: ดูคะแนน เกรด Timeline ผลประเมินฉบับก่อนหน้า และเอกสารแนบ', 'เมื่อผลผ่านการอนุมัติระดับบริหารแล้ว กด <b>รับทราบผล</b>'])}
+        ${ex('', '<span>รหัสพนักงาน 65001 → คำถาม "4 ตัวท้ายเลขบัตรประชาชน" → ใส่ 1234 → เข้าสู่ระบบ</span>')}
+        <span class="small muted">ถ้าขึ้น "ยังไม่เปิดให้ดูผลการประเมิน" แปลว่า HR ยังไม่เปิดให้ดูผล กรุณาตรวจสอบอีกครั้งภายหลัง</span>`);
+    if (tab === 'hr') body = card('HR / Admin', 'งานของฝ่ายบุคคลและผู้ดูแลระบบ', tbl(['เมนู', 'ทำอะไร', 'ตัวอย่าง'], [
+        ['รอบการประเมิน', 'เพิ่ม/เปิด/ปิดรอบ · ตั้งค่าเปิด/ปิดให้พนักงานดูผล', 'เพิ่มรอบ "ปี 2569 ครั้งที่ 2" ข้อมูล 01/04/2569 – 30/09/2569 → เปิดใช้รอบนี้'],
+        ['สถิติมาทำงาน', 'กรอก/นำเข้าสถิติ ระบบคำนวณคะแนนระเบียบวินัยใหม่ทันที', 'ดาวน์โหลดไฟล์ตัวอย่าง → กรอกใน Excel → บันทึก CSV UTF-8 → นำเข้า'],
+        ['จัดการพนักงาน', 'เพิ่ม/แก้ไขพนักงาน บทบาท ขอบเขตหน่วยงาน สถานะ (ปกติ/ลาออก) แบบฟอร์มรายคน · นำเข้า CSV', 'ตั้ง 22001 เป็น "ผู้ประเมิน" ขอบเขต แผนกผลิต 1 + แผนกผลิต 2'],
+        ['แบบฟอร์มประเมิน', 'ดูหัวข้อและช่วงคะแนนของทั้ง 9 แบบฟอร์ม', 'เกรด 2 ตำแหน่ง "ผู้คุมงาน" → แบบฟอร์ม เกรด 2 · ผู้คุมงาน (อัตโนมัติ)'],
+        ['รายงานสรุปผล', 'ดู/กรอง/พิมพ์ผลรายคน และสรุปตามหน่วยงาน', 'กรองฝ่ายผลิต + สถานะ "ปกติ" → พิมพ์รายงาน']]));
+    if (tab === 'faq') body = card('FAQ', 'คำถามที่พบบ่อย', [
+        ['ทำไมเลือกคะแนนไม่ได้', 'ต้องเลือก "ลักษณะผลการประเมิน" ของข้อนั้นก่อน ระบบจะแสดงเฉพาะคะแนนในช่วงของระดับที่เลือก'],
+        ['ทำไมแก้ตัวเลขมาสาย/ลา ในแบบประเมินไม่ได้', 'สถิติมาทำงานจัดการโดย HR เท่านั้น (เมนู สถิติมาทำงาน) เพื่อให้ข้อมูลตรงกับระบบบันทึกเวลา'],
+        ['ส่งกลับแก้ไขแล้วต้องทำอย่างไร', 'ผู้ประเมินเปิดแบบประเมิน อ่านเหตุผลใน Timeline แก้ไขคะแนน แล้วกด "ส่งแบบประเมิน" ใหม่'],
+        ['คะแนนรวมไม่ครบ 100', 'แบบฟอร์มเกรด 2 ธุรการ และเกรด 3 เจ้าหน้าที่ มีคะแนนเต็มรวม 95 ตามไฟล์ต้นฉบับ'],
+        ['คะแนนบางข้อหายไปหลังเปลี่ยนแบบฟอร์ม', 'คะแนนที่อยู่นอกช่วงของลักษณะผลที่เลือก (เช่น ร่างจากแบบฟอร์มเดิม) จะถูกนับว่ายังไม่ให้คะแนน ให้เลือกคะแนนใหม่'],
+        ['พนักงานลาออกยังอยู่ในรายชื่อ', 'ใช้ตัวกรอง "ปกติ / ลาออก" ด้านบนของทุกหน้า พนักงานลาออกจะไม่ถูกนับในรอบประเมิน']
+      ].map(([q, a]) => `<div style="display:flex;flex-direction:column;gap:2px;padding:8px 0;border-bottom:1px solid var(--divider)"><b style="font-weight:600">${q}</b><span class="small">${a}</span></div>`).join(''));
+    return `<div class="page" style="max-width:1000px">
+      <div><h2>Help? คู่มือการใช้งาน</h2><span class="small muted">ขั้นตอนการใช้งาน วิธีคำนวณคะแนน และการตัดเกรด พร้อมตัวอย่าง</span></div>
+      <div class="seg" style="flex-wrap:wrap">${T.map(([k, l]) => `<label><input type="radio" name="helptab" data-helptab="${k}" ${tab === k ? 'checked' : ''}>${l}</label>`).join('')}</div>
+      ${body}
+    </div>`;
+  }
+  function facts(e) {
+    return [['รหัสพนักงาน', e.code], ['ตำแหน่ง', e.pos], ['ระดับพนักงาน', 'เกรด ' + e.level], ['แบบฟอร์ม', FSHORT(e.fcode)], ['หน่วย/แผนก', e.dept], ['ฝ่าย', e.div || '–'], ['สถานที่ทำงาน', e.site || 'THAN'], ['ประเภทการจ้าง', e.type || '–'], ['วันที่เริ่มงาน', thDate(e.start)], ['อายุการทำงาน', tenure(e.start)]];
+  }
+  function summaryHTML() {
+    const sel = S.sel, e = sel.emp, c = calcScore(e.fcode, sel.att, sel.scores), act = sel.canAct;
+    return `<div class="card">${C4}
+      <span class="kicker">ผลการประเมิน</span>
+      <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
+        <div><span class="big">${fmt(c.total)}</span><span class="muted"> / 100</span></div>
+        <div class="right"><div class="grade">${esc(c.grade)}</div><span style="font-size:13px">${esc(c.label)}</span></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px">${c.parts.map(p => `<div style="display:flex;flex-direction:column;gap:3px;font-size:12px"><div style="display:flex;justify-content:space-between;gap:8px"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">P${p.no} · ${esc(p.short)}</span><span class="nowrap">${fmt(p.weighted)} / ${p.weight}</span></div><div class="bar" style="height:5px"><i style="width:${p.weight ? Math.round(p.weighted / p.weight * 100) : 0}%"></i></div></div>`).join('')}</div>
+      ${S.errors.length ? `<div class="note outline small">ยังให้คะแนนไม่ครบ:${S.errors.map(t => `<div>· ${esc(t)}</div>`).join('')}</div>` : ''}
+      ${sel.canEdit ? `<button class="btn btn-primary btn-lg" data-act="submit">${C4}${sel.status === 'returned' ? 'ส่งแบบประเมินอีกครั้ง' : 'ส่งเพื่ออนุมัติ'}</button><button class="btn" data-act="draft">บันทึกร่าง</button>` : ''}
+      ${act ? `<button class="btn btn-primary btn-lg" data-act="approve">${C4}${APPROVE_LABEL[sel.status]}</button>` : ''}
+      ${sel.canReturn ? `<input class="input" id="retNote" placeholder="เหตุผลที่ส่งกลับ (ถ้ามี)"><button class="btn" data-act="return">ส่งกลับแก้ไข</button>` : ''}
+      <button class="btn btn-ghost" style="align-self:flex-start" data-act="toReport">ดูรายงานสรุป / พิมพ์ →</button>
+    </div>
+    <div class="card">${C4}<span class="kicker">สายการอนุมัติ · Timeline</span>
+      ${timelineHTML(sel)}
+    </div>`;
+  }
+  function vEval() {
+    const sel = S.sel; if (!sel) return '<p class="empty">เลือกพนักงานจากรายชื่อ</p>';
+    const e = sel.emp, sc = sel.scores, Wf = W(e.form), lock = !sel.canEdit, dis = lock ? 'disabled' : '';
+    const c = calcScore(e.form, sel.att, sc, Wf), attPart = c.parts.find(p => p.att);
+    const lockedMsg = sel.canEdit ? '' : sel.canAct ? 'แบบประเมินนี้รอการดำเนินการจากคุณ · ตรวจสอบแล้วกดปุ่มในแผงผลการประเมิน' : 'สถานะ: ' + ST[sel.status][0] + ' · ดูได้อย่างเดียว';
+    const F = FN(e.fcode); normScores(sc);
+    const parts = F.c.map((p, i) => {
+      const lv = sc.lv[i], v = sc.sc[i];
+      let chips = '';
+      if (lv != null && p.o[lv]) { const o = p.o[lv]; for (let n = o[1]; n <= o[2]; n++) chips += `<label><input type="radio" name="nc${i}" ${v === n ? 'checked' : ''} ${dis} data-act="sc" data-i="${i}" data-n="${n}">${n}</label>`; }
+      return `<section class="card">${C4}
+        <div class="part-head"><div><span class="kicker">ข้อ ${i + 1} · คะแนนเต็ม ${p.max}</span><div class="card-title" style="margin-top:2px">${i + 1}. ${esc(p.t)}</div>${p.s ? `<span class="small muted">(${esc(p.s)})</span>` : ''}</div>
+          <div class="score-box"><b>${v == null ? '–' : v}</b><span class="muted"> / ${p.max}</span></div></div>
+        <div style="border-top:1px solid var(--divider)">${p.o.map((o, j) => `<label class="opt"><span style="display:flex;gap:10px;align-items:center"><input type="radio" name="np${i}" ${lv === j ? 'checked' : ''} ${dis} data-act="lv" data-i="${i}" data-j="${j}"><span class="dot"></span><span>${esc(o[0])}</span></span><span class="range">${o[1] === o[2] ? o[1] : o[1] + ' – ' + o[2]}</span></label>`).join('')}</div>
+        <div class="toolbar"><span class="small muted">ใส่คะแนน</span>${chips ? `<div class="seg">${chips}</div>` : '<span class="small muted">เลือกลักษณะผลการประเมินด้านบนก่อน</span>'}</div>
+        <input class="input" placeholder="ข้อมูล-เหตุผลประกอบการพิจารณา" value="${esc(sc.reasons[i] || '')}" ${dis} data-bind="reasons.${i}">
+      </section>`;
+    }).join('');
+    const att = `<section class="card">${C4}
+      <div class="part-head"><div><span class="kicker">ข้อ ${attPart.no} · คะแนนเต็ม ${attPart.max} · คำนวณอัตโนมัติ</span><div class="card-title" style="margin-top:2px">${attPart.no}. การรักษาระเบียบวินัย พิจารณาจากสถิติมาทำงาน</div><span class="small muted">ข้อมูลจากเมนูสถิติมาทำงาน (จัดการโดย HR) · ไม่ปรากฏสถิติการลางาน = ${attPart.max} คะแนน</span></div>
+        <div class="score-box"><b>${fmt(c.attRaw)}</b><span class="muted"> / ${attPart.max}</span>${attPart.ded ? `<div class="small muted">หัก ${fmt(attPart.ded)}</div>` : ''}</div></div>
+      <div class="scroll-x"><table class="table att" style="font-size:13px"><thead><tr><th style="text-align:left">รายการ</th><th>สถิติ</th><th style="text-align:left">เงื่อนไข</th><th class="right">หักคะแนน</th></tr></thead>
+      <tbody>${c.rows.map(a => `<tr><td>${a.l}<div class="small muted">${esc(a.note)}</div></td><td class="nowrap"><b>${fmt(a.v)}</b> <span class="muted">${a.u}</span></td><td class="small">${a.rule}</td><td class="right"><b>${a.ded ? '−' + fmt(a.ded) : '0'}</b></td></tr>`).join('')}
+        <tr><td colspan="3"><b>คะแนนการรักษาระเบียบวินัย</b> <span class="small muted">(${attPart.max} − ${fmt(attPart.ded)}, ไม่ต่ำกว่า 0)</span></td><td class="right"><b>${fmt(c.attRaw)}</b></td></tr></tbody></table></div>
+    </section>`;
+    const part8 = `<section class="card">${C4}
+      <div class="field"><label>หลักสูตรอบรมที่ต้องการเสริมให้กับพนักงาน</label><div style="display:flex;flex-direction:column;gap:6px">${sc.courses.map((g, i) => `<input class="input" placeholder="${i + 1}." value="${esc(g)}" ${dis} data-bind="courses.${i}">`).join('')}</div></div>
+      ${F.comments ? `<div class="grid-2" style="gap:16px">${[0, 1].map(i => `<div class="field"><label>ความเห็นผู้ประเมิน ${i + 1}</label><textarea class="input" rows="3" ${dis} data-bind="comments.${i}">${esc(sc.comments[i])}</textarea></div>`).join('')}</div>` : ''}
+      <span class="small muted">ผู้ลงนามตามแบบฟอร์ม: ${F.sign.map(esc).join(' · ')}</span>
+    </section>`;
+    return `<div class="page">
+      <div class="toolbar noprint"><button class="btn btn-ghost" data-act="back">← กลับไปรายชื่อ</button><span class="muted">/</span><span>${esc(e.name)}</span></div>
+      <div class="card">${C4}
+        <div class="part-head"><div><span class="kicker">${esc(S.boot.cycle.name)} · ${esc(FNAME(e.fcode))}</span><h2 style="margin-top:4px">${esc(e.name)}</h2></div>${tag(sel.status)}</div>
+        <div class="facts">${facts(e).map(f => `<div><span>${f[0]}</span>${esc(f[1])}</div>`).join('')}</div>
+      </div>
+      ${lockedMsg ? `<div class="note">${esc(lockedMsg)}</div>` : ''}
+      ${sel.status === 'returned' && sel.returnNote ? `<div class="note outline">ส่งกลับแก้ไข: ${esc(sel.returnNote)}</div>` : ''}
+      ${profileHTML(sel)}
+      <div class="eval-layout">
+        <div class="eval-form">
+          <div><button class="btn btn-ghost" data-act="guide">${S.guide ? 'ซ่อนเกณฑ์การให้เกรด' : 'ดูเกณฑ์การให้เกรด'}</button>
+            ${S.guide ? `<div class="scroll-x"><table class="table" style="font-size:13px"><thead><tr><th>เกรด</th><th>ความหมาย</th><th>คะแนนรวม</th><th>คำจำกัดความ</th></tr></thead><tbody>${G.map(g => `<tr><td style="font-family:var(--fh);font-size:17px">${g[0]}</td><td class="nowrap">${g[1]}</td><td class="nowrap">${g[2]}</td><td>${g[3]}</td></tr>`).join('')}</tbody></table></div>` : ''}
+          </div>
+          ${parts}${att}${part8}
+        </div>
+        <aside class="eval-side" id="summary">${summaryHTML()}</aside>
+      </div>
+    </div>`;
+  }
+
+  // ───────── ประวัติ + เอกสารแนบ ─────────
+  function sizeTxt(n) { return n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(1) + ' MB'; }
+  function prevHTML(sel) {
+    const P = sel.prev || [];
+    return `<section class="card">${C4}<div class="part-head"><span class="card-title">ผลประเมินฉบับก่อนหน้า</span><span class="small muted">${P.length} ฉบับ</span></div>
+      ${P.length ? '' : '<span class="small muted">ยังไม่มีผลประเมินรอบก่อนหน้า</span>'}
+      ${P.map((p, i) => { const o = P[i + 1], d = o ? p.total - o.total : null, open = S.prevOpen === sel.emp.code + ':' + i;
+        const tr = d == null ? 'รอบแรกในระบบ' : d > 0 ? '▲ ' + fmt(d) + ' จากรอบก่อน' : d < 0 ? '▼ ' + fmt(-d) + ' จากรอบก่อน' : 'เท่ากับรอบก่อน';
+        return `<div class="prev">
+          <button class="prev-head" data-act="prevToggle" data-k="${sel.emp.code}:${i}"><div><b>${esc(p.cycle)}</b><span class="small muted">ข้อมูล ${thDate(p.from)} – ${thDate(p.to)}${p.form ? ' · ' + esc(FNAME(p.form)) : ''}</span></div>
+            <div class="right"><span class="prev-total">${fmt(p.total)}</span><div class="trend ${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${tr}</div></div><span class="prev-grade">${esc(p.grade)}</span></button>
+          ${open ? `<div class="prev-body">
+            ${p.parts.length ? `<table class="table" style="font-size:13px"><tbody>${p.parts.map(x => `<tr><td>P${x.no} · ${esc(x.short)}</td><td class="right nowrap">${fmt(x.w)} / ${x.weight}</td></tr>`).join('')}</tbody></table>` : '<span class="small muted">ไม่มีรายละเอียดรายข้อ (นำเข้าจากระบบเดิม)</span>'}
+            ${p.strengths.length ? `<div class="small"><span class="muted">จุดเด่น: </span>${esc(p.strengths.join(' · '))}</div>` : ''}
+            ${p.improve.length ? `<div class="small"><span class="muted">ควรพัฒนา: </span>${esc(p.improve.join(' · '))}</div>` : ''}
+            <div class="small muted">${p.evaluator ? 'ผู้ประเมิน ' + esc(p.evaluator) + ' · ' : ''}${esc(p.label)}</div></div>` : ''}
+        </div>`; }).join('')}
+    </section>`;
+  }
+  function filesHTML(sel) {
+    const F = sel.files || [];
+    return `<section class="card">${C4}<div class="part-head"><span class="card-title">เอกสารแนบ</span><span class="small muted">${F.length} ไฟล์</span></div>
+      ${sel.canUpload ? `<label class="drop"><input type="file" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" data-upload="${esc(sel.emp.code)}" hidden><b>+ อัปโหลดเอกสาร / รูปภาพ</b><span class="small muted">PDF, Word, Excel หรือรูปภาพ · ไม่เกิน 10 MB ต่อไฟล์ · เลือกได้หลายไฟล์</span></label>` : ''}
+      ${F.length ? '' : '<span class="small muted">ยังไม่มีเอกสารแนบ</span>'}
+      <div class="files">${F.map(f => { const img = /^image\//.test(f.mime), ext = (f.name.split('.').pop() || 'FILE').toUpperCase().slice(0, 4), col = ext === 'PDF' ? '#c2410c' : /XLS|CSV/.test(ext) ? '#047857' : /DOC/.test(ext) ? '#1d4ed8' : '#5636c9';
+        return `<div class="file"><a href="${esc(f.url)}" target="_blank" rel="noopener" class="thumb">${img && f.url ? `<img src="${esc(f.url)}" alt="${esc(f.name)}">` : `<span style="color:${col}">${esc(ext)}</span>`}</a>
+          <div class="meta"><span class="fname" title="${esc(f.name)}">${esc(f.name)}</span><span class="small muted">${sizeTxt(f.size)} · ${thDate(f.at)} · ${esc(f.by || '')}</span>
+          <div class="frow"><span class="small" style="color:var(--a700)">${img ? 'รูปภาพ' : 'เอกสาร'}</span>${f.canDel ? `<button class="link-del" data-act="delFile" data-code="${esc(sel.emp.code)}" data-id="${f.id}">ลบ</button>` : ''}</div></div></div>`; }).join('')}</div>
+    </section>`;
+  }
+  function profileHTML(sel) { return `<div class="grid-2 noprint" style="align-items:start">${prevHTML(sel)}${filesHTML(sel)}</div>`; }
+  function readB64(file) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = rej; r.readAsDataURL(file); }); }
+  async function upload(code, list, input) {
+    const files = Array.from(list || []); if (input) input.value = '';
+    const big = files.filter(f => f.size > 10 * 1048576), ok = files.filter(f => f.size <= 10 * 1048576);
+    if (big.length) toast('ข้ามไฟล์ที่เกิน 10 MB: ' + big.map(f => f.name).join(', '), true);
+    let latest = null;
+    for (const f of ok) { const b64 = await readB64(f); latest = await run(api('apiUploadFile', code, { name: f.name, mime: f.type, size: f.size, base64: b64 })); }
+    if (!latest) return;
+    toast('อัปโหลด ' + ok.length + ' ไฟล์แล้ว');
+    if (S.sel && S.sel.emp.code === code) S.sel.files = latest;
+    if (S.mg.files && S.mg.files.emp.code === code) S.mg.files.files = latest;
+    rerender();
+  }
+  function rerender() { const y = window.scrollY; render(); window.scrollTo(0, y); }
+
+  // ───────── approvals ─────────
+  function vApprove() {
+    const rows = S.list.filter(r => r.canAct && actOk(r, S.f.act));
+    return `<div class="page">
+      <div class="page-head"><div><h2>รายการรออนุมัติ</h2><span class="small muted">${me().role === 'hr' || me().role === 'admin' ? 'แบบประเมินที่พนักงานรับทราบแล้ว รอบันทึกคะแนนเข้าระบบ' : ROLES[me().role] + ' · ' + esc(scopeText())}</span></div>${actSeg('f', S.f.act, S.list.filter(r => r.canAct))}</div>
+      ${rows.length ? '' : `<div class="card">${C4}<span class="card-title">ไม่มีรายการค้าง</span><span class="muted small">แบบประเมินที่ส่งถึงขั้นตอนของคุณจะแสดงที่นี่</span></div>`}
+      <div class="grid-cards">${rows.map(r => `<div class="card" style="gap:8px">${C4}
+        <div style="display:flex;justify-content:space-between;gap:8px"><span class="kicker">${esc(r.code)} · ${esc(FSHORT(r.fcode || r.form))}</span>${tag(r.status)}</div>
+        <span class="card-title">${esc(r.name)}</span><span class="small muted">${esc(r.pos)} · ${esc(r.dept)}</span>
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:8px;flex-wrap:wrap">
+          <div><span style="font-family:var(--fh);font-size:32px">${fmt(r.total)}</span> <span style="font-family:var(--fh);font-size:22px;color:var(--a700)">${esc(r.grade || '')}</span></div>
+          <div style="display:flex;gap:8px"><button class="btn" data-act="open" data-code="${esc(r.code)}">ตรวจสอบ</button><button class="btn btn-primary" data-act="quickApprove" data-code="${esc(r.code)}">${APPROVE_LABEL[r.status]}</button></div>
+        </div></div>`).join('')}</div>
+    </div>`;
+  }
+
+  // ───────── report ─────────
+  function histReport(H) {
+    const e = H.emp, p = H.prev, cy = H.cycle, sum = p.parts.reduce((a, x) => a + (Number(x.weight) || 0), 0);
+    return `<article class="report">
+      <div class="rhead"><div><div style="font-family:var(--fh);font-size:24px">แบบประเมินผลการปฏิบัติงานประจำปี ${cy.year_be}</div><div class="small" style="letter-spacing:.08em">EVALUATION FORM FOR THE YEAR ${cy.year_be - 543} · ครั้งที่ ${cy.round} · ผลรอบที่ผ่านมา</div></div>
+        <div class="right small">${esc(FNAME(H.form))}<div>ข้อมูลระหว่างวันที่ ${thDate(cy.data_from)} – ${thDate(cy.data_to)}</div></div></div>
+      <div class="facts"><div><span>ชื่อ-นามสกุล</span><b>${esc(e.name)}</b></div>${facts(e).map(f => `<div><span>${f[0]}</span>${esc(f[1])}</div>`).join('')}</div>
+      <table class="table" style="font-size:13px"><thead><tr><th>Part</th><th>หัวข้อการประเมิน</th><th class="right">คะแนนที่ได้</th><th class="right">คะแนนเต็ม</th></tr></thead>
+        <tbody>${p.parts.map(x => `<tr><td>${x.no}</td><td>${esc(x.short)}</td><td class="right">${fmt(x.w)}</td><td class="right">${x.weight}</td></tr>`).join('')}
+        <tr><td></td><td><b>รวม (Sum Total)</b></td><td class="right"><b>${fmt(p.total)}</b></td><td class="right">${sum || 100}</td></tr></tbody></table>
+      <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;padding:12px 16px;border:1px solid var(--divider)"><span>ผลการประเมิน · เกรดที่ได้</span><span class="grade" style="font-size:34px">${esc(p.grade)}</span><b>${esc(p.label)}</b></div>
+      ${H.note ? `<div><div style="font-weight:600;margin-bottom:4px">หมายเหตุ</div><div>${esc(H.note)}</div></div>` : ''}
+      ${(p.strengths || []).length || (p.improve || []).length ? `<div class="grid-2" style="gap:16px"><div><div style="font-weight:600;margin-bottom:4px">จุดดี / จุดเด่น</div>${(p.strengths || []).map(t => `<div>· ${esc(t)}</div>`).join('') || '<div class="muted">—</div>'}</div><div><div style="font-weight:600;margin-bottom:4px">สิ่งที่ควรพัฒนา</div>${(p.improve || []).map(t => `<div>· ${esc(t)}</div>`).join('') || '<div class="muted">—</div>'}</div></div>` : ''}
+      <div class="small muted right">${H.source ? 'นำเข้าจาก ' + esc(H.source) : 'ผู้ประเมิน ' + esc(p.evaluator || '-')}</div>
+    </article>`;
+  }
+  async function openReport(code) {
+    if (me().role === 'emp' || !S.rp) { S.sel = code ? await run(api('apiGetEvaluation', code)) : null; return render(); }
+    S.sel = null; S.rpHist = null;
+    if (code) { const r = await run(api('apiReportGet', S.rp.cycleId, code)); if (r.current) S.sel = r.current; else S.rpHist = r.hist; }
+    render(); window.scrollTo(0, 0);
+  }
+  function vReport() {
+    const R = S.rp, emp = me().role === 'emp';
+    const opts = emp ? S.list.filter(r => r.status !== 'none') : R.rows.filter(r => (!S.f.depts.length || S.f.depts.includes(r.dept)) && actOk(r, S.f.act)).filter(r => !S.rpq || r.name.includes(S.rpq) || r.code.includes(S.rpq));
+    const sel = S.sel;
+    let body = emp ? '<p class="empty">เลือกพนักงานเพื่อดูรายงาน</p>' : '';
+    if (S.rpHist) body = histReport(S.rpHist);
+    else if (sel && !sel.hidden) {
+      const e = sel.emp, sc = sel.scores, c = calcScore(e.fcode, sel.att, sc);
+      const list = (a) => a.length ? a.map(t => `<div>· ${esc(t)}</div>`).join('') : '<div class="muted">—</div>';
+      body = `<article class="report">
+        <div class="rhead"><div><div style="font-family:var(--fh);font-size:24px">แบบประเมินผลการปฏิบัติงานประจำปี ${S.boot.cycle.year_be}</div><div class="small" style="letter-spacing:.08em">EVALUATION FORM FOR THE YEAR ${S.boot.cycle.year_be - 543} · ครั้งที่ ${S.boot.cycle.round}</div></div>
+          <div class="right small">${esc(FNAME(e.fcode))}<div>ข้อมูลระหว่างวันที่ ${thDate(S.boot.cycle.data_from)} – ${thDate(S.boot.cycle.data_to)}</div></div></div>
+        <div class="facts"><div><span>ชื่อ-นามสกุล</span><b>${esc(e.name)}</b></div>${facts(e).map(f => `<div><span>${f[0]}</span>${esc(f[1])}</div>`).join('')}</div>
+        <table class="table" style="font-size:13px"><thead><tr><th>ข้อ</th><th>หัวข้อการประเมิน</th><th>ลักษณะผลการประเมิน</th><th class="right">คะแนน</th><th class="right">คะแนนเต็ม</th></tr></thead>
+          <tbody>${c.parts.map((p, i) => { const o = p.att ? null : FN(e.fcode).c[i].o[sc.lv[i]]; return `<tr><td>${p.no}</td><td>${esc(p.title)}${p.sub ? `<div class="small muted">(${esc(p.sub)})</div>` : ''}</td><td class="small">${p.att ? (p.ded ? 'หัก ' + fmt(p.ded) + ' คะแนนตามสถิติ' : 'ไม่ปรากฏสถิติการลางาน') : o ? esc(o[0]) : '–'}</td><td class="right">${p.raw == null ? '–' : fmt(p.raw)}</td><td class="right">${p.max}</td></tr>`; }).join('')}
+          <tr><td></td><td colspan="2"><b>รวมผลคะแนนประเมิน</b></td><td class="right"><b>${fmt(c.total)}</b></td><td class="right">${c.full}</td></tr></tbody></table>
+        <div style="display:flex;gap:24px;align-items:center;flex-wrap:wrap;padding:12px 16px;border:1px solid var(--divider)"><span>ผลการประเมิน · เกรดที่ได้</span><span class="grade" style="font-size:34px">${esc(c.grade)}</span><b>${esc(c.label)}</b></div>
+        ${(sel.prev || []).length ? `<div><div style="font-weight:600;margin-bottom:4px">ผลประเมินย้อนหลัง</div><table class="table" style="font-size:13px"><thead><tr><th>รอบการประเมิน</th><th class="right">คะแนนรวม</th><th class="right">เกรด</th></tr></thead><tbody>${sel.prev.map(p => `<tr><td>${esc(p.cycle)}</td><td class="right">${fmt(p.total)}</td><td class="right">${esc(p.grade)}</td></tr>`).join('')}</tbody></table></div>` : ''}
+        <div class="grid-2" style="gap:16px">
+          <div><div style="font-weight:600;margin-bottom:4px">สถิติการมาทำงาน</div>${c.rows.map(a => `<div style="display:flex;justify-content:space-between;gap:8px;border-bottom:1px dotted var(--divider);padding:2px 0"><span>${a.l}<span class="small muted"> · ${esc(a.note)}</span></span><span class="nowrap">${fmt(a.v)} ${a.u}${a.ded ? ' (−' + fmt(a.ded) + ')' : ''}</span></div>`).join('')}</div>
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div><div style="font-weight:600;margin-bottom:4px">หลักสูตรอบรมที่ต้องการเสริมให้กับพนักงาน</div>${list((sc.courses || []).filter(Boolean))}</div>
+            ${FN(e.fcode).comments ? [0, 1].map(i => `<div><div style="font-weight:600;margin-bottom:4px">ความเห็นผู้ประเมิน ${i + 1}</div>${list([(sc.comments || [])[i]].filter(Boolean))}</div>`).join('') : ''}
+          </div>
+        </div>
+        <div class="sigs">${chainOf(sel).map(s => `<div><b>${s.label}</b><span>${esc(s.by)}</span><span class="muted">วันที่ ${s.at}</span></div>`).join('')}</div>
+        <div class="sigs">${FN(e.fcode).sign.map(t => `<div><span>..............................</span><b>${esc(t)}</b></div>`).join('')}</div>
+        <div class="small muted right">Controlled Form : แบบฟอร์มประเมิน เกรด 1–5 rev.10/11/69</div>
+      </article>`;
+    }
+    return `<div class="page" style="max-width:900px">
+      <div class="page-head noprint"><h2>รายงานสรุปผล</h2>
+        <div class="toolbar">${emp ? '' : `<select class="input" style="width:auto;min-width:260px" data-change="rpcycle">${R.cycles.map(x => `<option value="${x.id}" ${x.id === R.cycleId ? 'selected' : ''}>${esc(x.name.replace('ประเมินผลการปฏิบัติงาน', ''))}${x.active ? ' (รอบปัจจุบัน)' : ''}</option>`).join('')}</select>`}
+        <select class="input" style="width:auto;min-width:240px" data-change="report"><option value="">— เลือกพนักงาน (${opts.length} คน) —</option>${opts.map(r => `<option value="${esc(r.code)}" ${(S.rpHist ? S.rpHist.emp.code : sel && sel.emp.code) === r.code ? 'selected' : ''}>${esc(r.code)} · ${esc(r.name)}</option>`).join('')}</select>
+        ${S.rpHist || (sel && !sel.hidden) ? '<button class="btn btn-primary" data-act="print">พิมพ์ / บันทึก PDF</button>' : ''}</div></div>
+      ${emp ? '' : `<div class="toolbar noprint"><input class="input" style="flex:1 1 220px;max-width:300px" placeholder="ค้นหาชื่อ หรือรหัสพนักงาน" value="${esc(S.rpq || '')}" data-input="rpq">${actSeg('f', S.f.act, R.rows)}${deptChips([...new Set(R.rows.map(r => r.dept).filter(Boolean))].sort(), S.f.depts, 'f')}</div>
+      ${S.rpHist || (sel && !sel.hidden) ? '' : `<div class="card noprint" style="padding:0;gap:0;overflow:hidden">${C4}<div class="scroll-x"><table class="table"><thead><tr><th>รหัส</th><th>ชื่อ-นามสกุล</th><th>ตำแหน่ง</th><th>แผนก</th><th class="right">คะแนนรวม</th><th class="right">เกรด</th>${R.cycleId === R.activeId ? '<th>สถานะ</th>' : ''}</tr></thead>
+        <tbody>${opts.map(r => `<tr class="click" data-act="rpOpen" data-code="${esc(r.code)}"><td class="muted">${esc(r.code)}</td><td class="nowrap" style="font-weight:500">${esc(r.name)}${r.active ? '' : ' <span class="tag tag-neutral">ลาออก</span>'}</td><td>${esc(r.pos)}</td><td class="nowrap">${esc(r.dept)}</td><td class="right">${r.total == null ? '–' : fmt(r.total)}</td><td class="right"><b>${esc(r.grade || '–')}</b></td>${R.cycleId === R.activeId ? `<td class="small">${ST[r.status] ? ST[r.status][0] : ''}</td>` : ''}</tr>`).join('')}</tbody></table>
+        ${opts.length ? '' : '<p class="empty" style="padding:20px">ไม่มีพนักงานที่มีผลประเมินตามเงื่อนไขนี้</p>'}</div></div>`}`}
+      ${body}
+    </div>`;
+  }
+
+  // ───────── employee ─────────
+  function vMine() {
+    const sel = S.sel; if (!sel) return '';
+    const shown = ['ack','hr','done'].includes(sel.status) && !sel.hidden;
+    let top;
+    if (sel.closed) top = `<div class="card">${C4}<span class="card-title">ยังไม่เปิดให้ดูผลการประเมิน</span><span class="muted small">ฝ่ายบุคคลจะเปิดให้ดูผลประเมินเมื่อพร้อม กรุณาตรวจสอบอีกครั้งภายหลัง</span></div>`;
+    else if (!shown) top = `<div class="card">${C4}<span class="card-title">อยู่ระหว่างการประเมิน · ${ST[sel.status][0]}</span><span class="muted small">คุณจะเห็นคะแนนและเกรดเมื่อแบบประเมินผ่านการอนุมัติระดับบริหารแล้ว</span></div>`;
+    else {
+      const c = calcScore(sel.emp.fcode, sel.att, sel.scores);
+      top = `<div class="card" style="gap:16px">${C4}
+        <div style="display:flex;gap:28px;align-items:flex-end;flex-wrap:wrap"><div><span class="kicker">คะแนนรวม</span><div class="big" style="font-size:64px">${fmt(c.total)}</div></div><div><span class="kicker">เกรด</span><div class="grade" style="font-size:64px">${esc(c.grade)}</div></div><span style="font-size:18px;padding-bottom:8px">${esc(c.label)}</span></div>
+        <table class="table" style="font-size:13px"><tbody>${c.parts.map(p => `<tr><td>${p.no}. ${esc(p.title)}</td><td class="right nowrap">${fmt(p.weighted)} / ${p.weight}</td></tr>`).join('')}</tbody></table>
+        ${sel.canAct ? `<button class="btn btn-primary btn-lg" style="align-self:flex-start" data-act="approve">${C4}รับทราบผลการประเมิน</button>` : ''}
+        <button class="btn btn-ghost" style="align-self:flex-start" data-act="toReport">ดูรายงานฉบับเต็ม →</button>
+      </div>`;
+    }
+    return `<div class="page" style="max-width:900px">
+      <div><h2>ผลประเมินของฉัน</h2><span class="small muted">${esc(S.boot.cycle.name)}</span></div>
+      ${top}
+      <div class="card">${C4}<span class="kicker">สายการอนุมัติ · Timeline</span>${timelineHTML(sel)}</div>
+      ${profileHTML(sel)}
+    </div>`;
+  }
+
+  // ───────── HR: weights ─────────
+  function vWeights() {
+    const keys = Object.keys(SCORING.FORMS), cnt = k => (S.list || []).filter(r => r.fcode === k).length;
+    const fullOf = F => F.c.reduce((a, p) => a + p.max, 0) + F.disc;
+    const rule = r => esc(r[1] + ' ' + r[3]);
+    const cur = S.fv && SCORING.FORMS[S.fv] ? S.fv : null;
+    if (!cur) {
+      const groups = [['1', 'เกรด 1'], ['2', 'เกรด 2'], ['3', 'เกรด 3'], ['4–5', 'เกรด 4–5']];
+      return `<div class="page" style="max-width:1200px">
+        <div><h2>แบบฟอร์มประเมิน</h2><span class="small muted">ตามไฟล์ แบบฟอร์มประเมิน เกรด 1–5 rev.10/11/69 · คลิกการ์ดเพื่อดูหัวข้อและเกณฑ์คะแนน · ระบบเลือกแบบฟอร์มจากเกรดและตำแหน่ง HR เปลี่ยนรายคนได้ที่หน้าจัดการพนักงาน</span></div>
+        ${groups.map(([g, gl]) => { const ks = keys.filter(k => SCORING.FORMS[k].grade === g); return `<div style="display:flex;flex-direction:column;gap:10px">
+          <span class="kicker">${gl} · ${ks.length} แบบฟอร์ม</span>
+          <div class="grid-cards">${ks.map(k => { const F = SCORING.FORMS[k], full = fullOf(F), n = cnt(k); return `<button type="button" class="card fcard" data-act="fvOpen" data-k="${k}">${C4}
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start"><span class="kicker">${esc(F.short)}</span>${full !== 100 ? `<span class="tag tag-warn">เต็ม ${full}</span>` : ''}</div>
+            <span class="card-title">${esc(F.name)}</span>
+            <div class="fcard-meta"><span><b>${F.c.length + 1}</b> หัวข้อ</span><span><b>${full}</b> คะแนนเต็ม</span><span>ระเบียบวินัย <b>${F.disc}</b></span>${S.list && S.list.length ? `<span><b>${n}</b> คน</span>` : ''}</div>
+            <span class="small" style="color:var(--a700)">ดูรายละเอียด →</span>
+          </button>`; }).join('')}</div></div>`; }).join('')}
+      </div>`;
+    }
+    const F = SCORING.FORMS[cur], full = fullOf(F);
+    return `<div class="page" style="max-width:1100px">
+      <div class="toolbar"><button class="btn btn-ghost" data-act="fvBack">← แบบฟอร์มทั้งหมด</button><span class="muted">/</span><span>${esc(F.short)}</span></div>
+      <div class="card">${C4}
+        <div class="part-head"><div><span class="kicker">${esc(F.short)}</span><h2 style="margin-top:4px">แบบประเมินผลการปฏิบัติงาน (${esc(F.name)})</h2></div>
+          <div class="score-box"><b>${full}</b><span class="muted"> คะแนนเต็ม</span></div></div>
+        <div class="fcard-meta"><span><b>${F.c.length + 1}</b> หัวข้อ</span>${cnt(cur) ? `<span>ใช้กับพนักงาน <b>${cnt(cur)}</b> คน</span>` : ''}<span>ผู้ลงนาม: ${F.sign.map(esc).join(' · ')}</span>${F.comments ? '<span>มีช่องความเห็นผู้ประเมิน 1–2</span>' : ''}</div>
+        ${full !== 100 ? `<div class="note outline small">คะแนนเต็มรวมของแบบฟอร์มนี้ = ${full} (ไม่ครบ 100) ตามไฟล์ต้นฉบับ</div>` : ''}
+      </div>
+      ${F.c.map((p, i) => `<section class="card">${C4}
+        <div class="part-head"><div><span class="kicker">ข้อ ${i + 1} · คะแนนเต็ม ${p.max}</span><div class="card-title" style="margin-top:2px">${i + 1}. ${esc(p.t)}</div>${p.s ? `<span class="small muted">(${esc(p.s)})</span>` : ''}</div></div>
+        <div style="border-top:1px solid var(--divider)">${p.o.map(o => `<div class="opt" style="cursor:default"><span>${esc(o[0])}</span><span class="range">${o[1] === o[2] ? o[1] : o[1] + ' – ' + o[2]}</span></div>`).join('')}</div>
+      </section>`).join('')}
+      <section class="card">${C4}
+        <div class="part-head"><div><span class="kicker">ข้อ ${F.c.length + 1} · คะแนนเต็ม ${F.disc} · คำนวณอัตโนมัติ</span><div class="card-title" style="margin-top:2px">${F.c.length + 1}. การรักษาระเบียบวินัย</div><span class="small muted">พิจารณาจากสถิติมาทำงาน · ไม่ปรากฏสถิติการลางาน = ${F.disc} คะแนน</span></div></div>
+        <div style="border-top:1px solid var(--divider)">${SCORING.DISC_RULES.map(r => `<div class="opt" style="cursor:default"><span>${esc(r[1])} (${esc(r[2])})</span><span class="range">${esc(r[3])}</span></div>`).join('')}</div>
+        <span class="small muted">คะแนน = ${F.disc} − หักคะแนน (ไม่ต่ำกว่า 0)</span>
+      </section>
+    </div>`;
+  }
+
+  // ───────── รอบการประเมิน ─────────
+  function vCycles() {
+    const L = S.cy || [], d = S.cyD, cur = L.find(x => x.active);
+    const thD = s => fmtD(s);
+    const fld = (l, x) => `<div class="field" style="flex:1 1 160px;min-width:0"><label>${l}</label>${x}</div>`;
+    const form = d ? `<div class="card" style="gap:16px">${C4}<span class="kicker">${d.id ? 'แก้ไขรอบการประเมิน' : 'เพิ่มรอบการประเมิน'}</span>
+      <div style="display:flex;gap:12px;flex-wrap:wrap">
+        ${fld('ปี (พ.ศ.)', `<input class="input" type="number" min="2500" max="2700" value="${esc(d.year)}" data-cy="year">`)}
+        ${fld('ครั้งที่', `<select class="input" data-cy="round">${[1, 2, 3, 4].map(n => `<option value="${n}" ${Number(d.round) === n ? 'selected' : ''}>${n}</option>`).join('')}</select>`)}
+        ${fld('ข้อมูลตั้งแต่วันที่', dateIn('data-cy="from"', d.from))}
+        ${fld('ถึงวันที่', dateIn('data-cy="to"', d.to))}</div>
+      ${fld('ชื่อรอบ (เว้นว่าง = ตั้งให้อัตโนมัติ)', `<input class="input" value="${esc(d.name)}" placeholder="ประเมินผลการปฏิบัติงานประจำปี ${esc(d.year)} ครั้งที่ ${esc(d.round)}" data-cy="name">`)}
+      ${S.cyErr ? `<span class="small" style="color:var(--warn)">${esc(S.cyErr)}</span>` : ''}
+      <div class="toolbar"><button class="btn btn-primary" data-act="cySave">${C4}บันทึก</button><button class="btn" data-act="cyCancel">ยกเลิก</button></div></div>` : '';
+    return `<div class="page" style="max-width:1200px">
+      <div class="page-head"><div><h2>รอบการประเมิน</h2><span class="small muted">เปิดใช้งานได้ทีละ 1 รอบ · รอบที่เปิดอยู่คือรอบที่ทุกคนประเมิน กรอกสถิติมาทำงาน และเห็นในแดชบอร์ด</span></div>
+        <button class="btn btn-primary" data-act="cyNew">${C4}เพิ่มรอบใหม่</button></div>
+      <div class="card" style="gap:10px">${C4}<span class="kicker">การตั้งค่า</span>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap">
+          <div style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 320px"><b style="font-weight:600">ให้พนักงานดูผลประเมินของตนเอง</b><span class="small muted">เปิด = พนักงานเห็นคะแนน เกรด และผลประเมินฉบับก่อนหน้า (เมื่อผ่านการอนุมัติระดับบริหารแล้ว) และกดรับทราบผลได้ · ปิด = พนักงานเข้าระบบได้ แต่ไม่เห็นผล และยังรับทราบผลไม่ได้</span>${S.boot.empViewBy ? `<span class="small muted">แก้ไขล่าสุด: ${esc(S.boot.empViewBy)}</span>` : ''}</div>
+          <div class="seg"><label><input type="radio" name="empview" data-empview="on" ${S.boot.empView ? 'checked' : ''}>เปิดให้ดู</label><label><input type="radio" name="empview" data-empview="off" ${S.boot.empView ? '' : 'checked'}>ปิดไว้</label></div>
+        </div></div>
+      ${L.filter(x => x.active).length > 1 ? `<div class="card" style="gap:6px">${C4}<span class="kicker" style="color:var(--warn)">มีรอบที่เปิดใช้งานพร้อมกัน ${L.filter(x => x.active).length} รอบ</span><span style="font-size:14px">ระบบใช้รอบที่สร้างล่าสุดเป็นรอบปัจจุบัน กด "เปิดใช้รอบนี้" ที่รอบที่ต้องการ ระบบจะปิดรอบอื่นให้ หรือลบรอบที่ซ้ำ</span></div>` : ''}
+      ${form}
+      <div class="card" style="padding:0;gap:0;overflow:hidden">${C4}<div class="scroll-x"><table class="table"><thead><tr><th>รอบ</th><th>ช่วงข้อมูล</th><th>สถานะ</th><th class="right">แบบประเมิน</th><th class="right">ปิดแล้ว</th><th class="right">สถิติมาทำงาน</th><th></th></tr></thead>
+        <tbody>${L.map(x => `<tr><td><b style="font-weight:600">${x.year} ครั้งที่ ${x.round}</b>${x.dup ? ' <span class="tag tag-warn">ซ้ำ</span>' : ''}<div class="small muted">${esc(x.name)}</div></td><td class="nowrap">${thD(x.from)} – ${thD(x.to)}</td>
+          <td>${x.active ? '<span class="tag tag-accent">เปิดใช้งาน (รอบปัจจุบัน)</span>' : '<span class="tag tag-neutral">ปิด</span>'}</td>
+          <td class="right">${x.evals}</td><td class="right">${x.done}</td><td class="right">${x.att} คน</td>
+          <td><div class="toolbar" style="justify-content:flex-end;flex-wrap:nowrap"><button class="btn btn-ghost" data-act="cyEdit" data-id="${x.id}">แก้ไข</button>${x.active && L.filter(z => z.active).length === 1 ? '' : `<button class="btn" data-act="cyOn" data-id="${x.id}">เปิดใช้รอบนี้</button>`}${!x.evals && L.length > 1 ? `<button class="btn btn-ghost" style="color:var(--warn)" data-act="cyDel" data-id="${x.id}">ลบ</button>` : ''}</div></td></tr>`).join('')}</tbody></table>
+        ${L.length ? '' : '<p class="empty" style="padding:20px">ยังไม่มีรอบการประเมิน</p>'}</div></div>
+      <span class="small muted">เปลี่ยนรอบปัจจุบันแล้ว แบบประเมินของรอบเดิมยังอยู่ครบ ดูย้อนหลังได้ที่รายงานสรุปผลและโปรไฟล์พนักงาน · ลบได้เฉพาะรอบที่ยังไม่มีแบบประเมิน</span>
+    </div>`;
+  }
+  async function cycleSwitched() { S.boot = await run(api('apiBootstrap')); S.list = []; S.sel = null; S.rp = null; shell(); await go('cycles'); }
+
+  // ───────── สถิติมาทำงาน ─────────
+  const ATT_K = ['late', 'sick', 'personal', 'absent', 'verbal', 'written'];
+  function attCalc(r) {
+    const a = Object.assign({}, r.att, S.attD[r.code] || {}), c = calcScore(r.fcode || r.form, a, {}), p = c.parts.find(x => x.att);
+    return { a, raw: c.attRaw, max: c.attMax, ded: p.ded, rows: c.rows };
+  }
+  function attRowCells(r) {
+    const k = attCalc(r);
+    return `<td class="right">${k.ded ? '−' + fmt(k.ded) : '0'}</td><td class="right"><b>${fmt(k.raw)}</b><span class="muted"> / ${k.max}</span></td>`;
+  }
+  const ATT_HEAD = ['รหัสพนักงาน', 'ชื่อ-นามสกุล', 'แผนก', 'มาสาย (นาที)', 'ลาป่วย (วัน)', 'ลากิจ (วัน)', 'ขาดงาน (วัน)', 'หนังสือเตือนวาจา (ครั้ง)', 'หนังสือเตือนลายลักษณ์อักษร (ฉบับ)'];
+  const ATT_ALIAS = { late: /สาย|late/i, sick: /ป่วย|sick/i, personal: /กิจ|personal/i, absent: /ขาด|absent/i, verbal: /วาจา|verbal/i, written: /ลายลักษณ์|written/i, code: /รหัส|code|prs/i };
+  function csvParse(text) {
+    const out = []; let row = [], f = '', q = false;
+    text = text.replace(/^\uFEFF/, '');
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (q) { if (ch === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += ch; continue; }
+      if (ch === '"') q = true; else if (ch === ',' || ch === '\t') { row.push(f); f = ''; } else if (ch === '\n') { row.push(f); out.push(row); row = []; f = ''; } else if (ch !== '\r') f += ch;
+    }
+    if (f !== '' || row.length) { row.push(f); out.push(row); }
+    return out.filter(r => r.some(x => String(x).trim() !== ''));
+  }
+  function attTemplate() {
+    const cell = v => { v = String(v ?? ''); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    const lines = [ATT_HEAD].concat(S.att.rows.filter(r => r.isactive).map(r => [r.code, r.name, r.dept].concat(ATT_K.map(k => r.att[k] || 0))));
+    const blob = new Blob(['\uFEFF' + lines.map(l => l.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'PFormPro_สถิติมาทำงาน_' + (S.att.cycle.year_be || '') + '_' + (S.att.cycle.round || '') + '.csv'; document.body.appendChild(a); a.click(); a.remove();
+  }
+  function attImport(text) {
+    const rows = csvParse(text); if (rows.length < 2) { S.attMsg = { ok: 'ไม่พบข้อมูลในไฟล์', bad: [] }; return rerender(); }
+    const head = rows[0].map(x => String(x).trim()), col = {};
+    Object.keys(ATT_ALIAS).forEach(k => { const i = head.findIndex(x => ATT_ALIAS[k].test(x)); if (i >= 0) col[k] = i; });
+    if (col.code == null) { S.attMsg = { ok: 'ไม่พบคอลัมน์ "รหัสพนักงาน" ในแถวแรกของไฟล์', bad: [] }; return rerender(); }
+    const bad = []; let n = 0;
+    rows.slice(1).forEach((r, i) => {
+      const code = String(r[col.code] || '').trim(), e = S.att.rows.find(x => x.code === code);
+      if (!e) return bad.push('แถว ' + (i + 2) + ' ไม่พบรหัส ' + (code || '(ว่าง)'));
+      const d = {}; let err = '';
+      ATT_K.forEach(k => { if (col[k] == null) return; const raw = String(r[col[k]] ?? '').trim(); if (raw === '') return; const v = Number(raw.replace(/,/g, '')); if (!(v >= 0)) err = k; else if (v !== Number(e.att[k] || 0)) d[k] = v; });
+      if (err) return bad.push('แถว ' + (i + 2) + ' รหัส ' + code + ' ค่าไม่ถูกต้อง');
+      if (Object.keys(d).length) { S.attD[code] = Object.assign(S.attD[code] || {}, d); n++; }
+    });
+    S.attMsg = { ok: 'อ่านไฟล์ ' + (rows.length - 1) + ' แถว · มีค่าเปลี่ยน ' + n + ' คน', bad };
+    rerender();
+  }
+  // ───────── นำเข้าพนักงาน ─────────
+  const EMP_COLS = [["code","รหัสพนักงาน"],["name","ชื่อ-นามสกุล"],["pos","ตำแหน่ง"],["level","เกรด"],["dept","แผนก"],["div","ฝ่าย"],["start","วันที่เริ่มงาน"],["nid4","เลขบัตรประชาชน 4 ตัวท้าย"],["dob","วันเกิด"],["phone","เบอร์โทรศัพท์"],["site","สถานที่ทำงาน"],["type","ประเภทการจ้าง"],["form","แบบฟอร์มประเมิน"],["status","สถานะ"],["evaluate","ร่วมประเมิน"],["remark","หมายเหตุ"]];
+  const EMP_ALIAS = { code: /รหัส(พนักงาน)?|^code$|prs_no/i, name: /ชื่อ|^name$/i, pos: /ตำแหน่ง|position/i, level: /เกรด|ระดับ|grade|level/i, dept: /แผนก|department/i, div: /ฝ่าย|division/i, start: /เริ่มงาน|start/i, nid4: /บัตร|id.?card|national/i, dob: /เกิด|birth/i, phone: /โทร|phone|tel/i, site: /สถานที่|site/i, type: /ประเภท|type/i, form: /แบบฟอร์ม|form/i, status: /สถานะ|status|isactive/i, evaluate: /ร่วมประเมิน|evaluate/i, remark: /หมายเหตุ|remark/i };
+  function empTemplate() {
+    const cell = v => { v = String(v ?? ''); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    const U = S.adm.units, dv = d => Object.keys(U).find(k => U[k].includes(d)) || '';
+    const rows = S.adm.emps.filter(e => e.code !== 'admin').map(e => [e.code, e.name, e.pos, e.level, e.dept, dv(e.dept), fmtD(e.start, ''), e.nid4 || '', fmtD(e.dob, ''), e.phone || '', e.site || '', e.type || '', e.evalForm || '', e.active === false ? 'ลาออก' : 'ปกติ', e.evaluate === false ? 'N' : 'Y', e.remark || '']);
+    const blob = new Blob(['\uFEFF' + [EMP_COLS.map(x => x[1])].concat(rows).map(l => l.map(cell).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'PFormPro_template_พนักงาน.csv'; document.body.appendChild(a); a.click(); a.remove();
+  }
+  async function empImport(text) {
+    const rows = csvParse(text); if (rows.length < 2) { S.empImp = { msg: 'ไม่พบข้อมูลในไฟล์' }; return rerender(); }
+    const head = rows[0].map(x => String(x).trim()), col = {};
+    Object.keys(EMP_ALIAS).forEach(k => { const i = head.findIndex((x, j) => EMP_ALIAS[k].test(x) && !Object.values(col).includes(j)); if (i >= 0) col[k] = i; });
+    if (col.code == null) { S.empImp = { msg: 'ไม่พบคอลัมน์ "รหัสพนักงาน" ในแถวแรกของไฟล์' }; return rerender(); }
+    const bad = [];
+    const data = rows.slice(1).map((r, i) => { const o = { _line: i + 2 }; Object.keys(col).forEach(k => o[k] = String(r[col[k]] ?? '').trim());
+      ['start', 'dob'].forEach(k => { if (o[k] && !/^\d{4}-\d{2}-\d{2}$/.test(o[k])) { const v = parseD(o[k]); if (v) o[k] = v; else bad.push('แถว ' + (i + 2) + ': ' + (k === 'start' ? 'วันที่เริ่มงาน' : 'วันเกิด') + ' "' + o[k] + '" ไม่ใช่ dd/MM/yyyy'); } });
+      return o; });
+    const res = await run(api('apiImportEmployees', data, true));
+    S.empImp = { data, res, cols: Object.keys(col).map(k => (EMP_COLS.find(x => x[0] === k) || [k, k])[1]), pre: bad };
+    rerender();
+  }
+  function empImpHTML() {
+    const I = S.empImp; if (!I) return '';
+    if (I.msg) return `<div class="card" style="gap:6px">${C4}<span class="kicker">นำเข้าพนักงาน</span><span>${esc(I.msg)}</span><div class="toolbar"><button class="btn btn-ghost" data-act="empImpX">ปิด</button></div></div>`;
+    const R = I.res, errs = (I.pre || []).concat(R.errors || []);
+    return `<div class="card" style="gap:10px">${C4}<span class="kicker">${R.done ? 'นำเข้าเรียบร้อย' : 'ตรวจสอบไฟล์ก่อนนำเข้า'}</span>
+      <div class="fcard-meta"><span>อ่านได้ <b>${R.total}</b> แถว</span><span>พนักงานใหม่ <b>${R.add}</b></span><span>อัปเดต <b>${R.upd}</b></span>${errs.length ? `<span style="color:var(--warn)">ข้อผิดพลาด <b style="color:inherit">${errs.length}</b></span>` : ''}</div>
+      <span class="small muted">คอลัมน์ที่พบ: ${I.cols.map(esc).join(' · ')} · ช่องว่าง = คงค่าเดิม</span>
+      ${R.newDeps && R.newDeps.length ? `<span class="small">จะสร้างแผนกใหม่: ${R.newDeps.map(esc).join(', ')}</span>` : ''}
+      ${errs.length ? `<div class="note outline small" style="max-height:220px;overflow:auto">${errs.slice(0, 200).map(t => `<div>· ${esc(t)}</div>`).join('')}</div><span class="small muted">แก้ไขไฟล์แล้วนำเข้าใหม่ ระบบจะนำเข้าเมื่อไม่มีข้อผิดพลาดเท่านั้น</span>` : ''}
+      <div class="toolbar">${!R.done && !errs.length ? `<button class="btn btn-primary" data-act="empImpGo">${C4}ยืนยันนำเข้า ${R.add + R.upd} คน</button>` : ''}<button class="btn btn-ghost" data-act="empImpX">${R.done ? 'ปิด' : 'ยกเลิก'}</button></div>
+    </div>`;
+  }
+  function vAtt() {
+    const A = S.att || { rows: [], cycle: {} }, q = S.attq || '';
+    const rows = A.rows.filter(r => (!S.f.depts.length || S.f.depts.includes(r.dept)) && actOk(r, S.f.act) && (!q || r.name.includes(q) || r.code.includes(q)));
+    const n = Object.keys(S.attD).length, tierTip = a => a.l + ' (' + a.u + ')';
+    const cellIn = (r, k) => { const v = (S.attD[r.code] || {})[k] ?? r.att[k] ?? 0, ch = S.attD[r.code] && k in S.attD[r.code]; return `<td class="right"><input class="input" type="number" min="0" step="${k === 'late' ? 1 : 0.5}" value="${v}" data-att="${esc(r.code)}|${k}" style="width:70px;min-height:30px;padding:3px 6px;text-align:right;${ch ? 'border-color:var(--accent);background:var(--a100)' : ''}"></td>`; };
+    const th = SCORING.ATT.map(a => `<th class="right" title="${esc(tierTip(a))}">${a.l}<div class="small muted" style="font-weight:400">${a.u}</div></th>`).join('');
+    return `<div class="page" style="max-width:1440px">
+      <div class="page-head"><div><h2>สถิติมาทำงาน</h2><span class="small muted">${esc(A.cycle.name || '')} · ข้อมูลนี้ใช้คำนวณหัวข้อ การรักษาระเบียบวินัย ของทุกแบบฟอร์มอัตโนมัติ</span></div>
+        <div class="toolbar"><button class="btn" data-act="attTpl" title="ไฟล์ CSV รายชื่อพนักงานทั้งหมดพร้อมค่าปัจจุบัน">ดาวน์โหลดไฟล์ตัวอย่าง</button><label class="btn" style="cursor:pointer">นำเข้า CSV<input type="file" accept=".csv,text/csv" data-attfile="1" hidden></label><button class="btn" data-act="attReset" ${n ? '' : 'disabled'}>ยกเลิกการแก้ไข</button><button class="btn btn-primary" data-act="attSave" ${n ? '' : 'disabled'}>${C4}บันทึก${n ? ' (' + n + ' คน)' : ''}</button></div></div>
+      ${S.attMsg ? `<div class="card" style="gap:6px">${C4}<span class="kicker">ผลการนำเข้าไฟล์</span><span style="font-size:14px">${esc(S.attMsg.ok)}</span>${S.attMsg.bad.length ? `<span class="small" style="color:var(--warn)">ข้ามไป ${S.attMsg.bad.length} แถว: ${esc(S.attMsg.bad.slice(0, 8).join(' · '))}${S.attMsg.bad.length > 8 ? ' …' : ''}</span>` : ''}<span class="small muted">ตรวจค่าในช่องที่ไฮไลต์ แล้วกดบันทึก</span></div>` : ''}
+      <div class="toolbar"><input class="input" style="flex:1 1 220px;max-width:300px" placeholder="ค้นหาชื่อ หรือรหัสพนักงาน" value="${esc(q)}" data-input="attq">${actSeg('f', S.f.act, A.rows)}${deptChips([...new Set(A.rows.map(r => r.dept).filter(Boolean))].sort(), S.f.depts, 'f')}</div>
+      <div class="card" style="padding:0;gap:0;overflow:hidden">${C4}<div class="scroll-x"><table class="table" style="font-size:13px"><thead><tr><th>รหัส</th><th>ชื่อ-นามสกุล</th><th>แผนก</th><th>แบบฟอร์ม</th>${th}<th class="right">หักคะแนน</th><th class="right">คะแนนระเบียบวินัย</th></tr></thead>
+        <tbody>${rows.map(r => `<tr data-attrow="${esc(r.code)}"><td class="muted">${esc(r.code)}</td><td class="nowrap" style="font-weight:500">${esc(r.name)}${r.isactive ? '' : ' <span class="tag tag-neutral">ลาออก</span>'}${r.status === 'done' ? ' <span class="tag tag-outline" title="แบบประเมินปิดแล้ว คะแนนที่บันทึกไว้จะไม่เปลี่ยน">ปิดแล้ว</span>' : ''}</td><td class="nowrap">${esc(r.dept)}</td><td class="small nowrap">${esc(FSHORT(r.fcode || r.form))}</td>${ATT_K.map(k => cellIn(r, k)).join('')}${attRowCells(r)}</tr>`).join('')}</tbody></table>
+        ${rows.length ? '' : '<p class="empty" style="padding:20px">ไม่พบพนักงานตามเงื่อนไข</p>'}</div></div>
+      <div class="card">${C4}<span class="kicker">เงื่อนไขการคำนวณ</span>
+        <div class="scroll-x"><table class="table" style="font-size:13px"><thead><tr><th>รายการ</th><th>เงื่อนไข</th></tr></thead>
+        <tbody>${SCORING.DISC_RULES.map(r => `<tr><td>${r[1]} (${r[2]})</td><td>${r[3]} คะแนน</td></tr>`).join('')}</tbody></table></div>
+        <span class="small muted">คะแนนเต็มตามเกรด: เกรด 1 = 30 · เกรด 2 = 20 · เกรด 3 = 10 · เกรด 4–5 = 5 · คะแนน = คะแนนเต็ม − หักคะแนน (ไม่ต่ำกว่า 0) · มาสายคิดจากนาที ÷ 60</span></div>
+    </div>`;
+  }
+
+  // ───────── HR: จัดการพนักงาน ─────────
+  function blankEmp() {
+    const U = S.adm.units, first = Object.values(U).flat()[0] || '';
+    return { isNew: true, code: '', name: '', pos: '', level: 1, dept: first, start: new Date().toISOString().slice(0, 10), active: true, evaluate: true, nid4: '', dobTh: '', phone4: '', phone: '', remark: '', evalForm: '', role: 'emp', scopeType: 'dept', scopeValues: [], password: '', hasPwd: false, locked: false };
+  }
+  function editEmp(code) {
+    const e = S.adm.emps.find(x => x.code === code);
+    S.mg.d = { isNew: false, code: e.code, name: e.name, pos: e.pos, level: e.level, dept: e.dept, start: e.start || '', active: e.active !== false, evaluate: e.evaluate !== false, nid4: e.nid4 || '', dobTh: e.dobTh || '', phone4: e.phone4 || '', phone: e.phone || '', remark: e.remark || '', status: e.status || 'working', evalForm: e.evalForm || '',
+      role: e.role, scopeType: e.role === 'emp' ? 'dept' : e.scopeType, scopeValues: [...(e.scopeValues || [])], password: '', hasPwd: e.hasPwd, locked: e.locked };
+    S.mg.err = ''; S.mg.files = null; S.mg.mode = 'profile';
+    api('apiGetEvaluation', code).then(r => { if (S.mg.d && S.mg.d.code === code) { S.mg.files = r; rerender(); } }).catch(() => {});
+  }
+  function vStaff() {
+    const A = S.adm || { emps: [], units: {} }, U = A.units, M = S.mg, d = M.d, allD = Object.values(U).flat();
+    const tabs = `<div class="seg"><label><input type="radio" name="mgtab" data-mgtab="emp" ${M.tab === 'emp' ? 'checked' : ''}>พนักงาน</label><label><input type="radio" name="mgtab" data-mgtab="unit" ${M.tab === 'unit' ? 'checked' : ''}>หน่วยงาน</label></div>`;
+    const head = `<div class="page-head"><div><h2>จัดการพนักงาน</h2><span class="small muted">ข้อมูลพนักงาน บทบาทในระบบ และหน่วยงานที่ดูแล ผู้ใช้เห็นเฉพาะพนักงานในหน่วยงานที่กำหนดให้ (กรองที่เซิร์ฟเวอร์)</span></div><div class="toolbar">${tabs}<button class="btn" data-act="empTpl" title="ไฟล์ CSV หัวคอลัมน์ตาม template พร้อมรายชื่อพนักงานปัจจุบัน">ดาวน์โหลด template</button><label class="btn" style="cursor:pointer">นำเข้าพนักงาน (CSV)<input type="file" accept=".csv,text/csv" data-empfile="1" hidden></label><button class="btn btn-primary" data-act="mgNew">+ เพิ่มพนักงาน</button></div></div>${empImpHTML()}`;
+    if (M.tab === 'unit') {
+      return `<div class="page" style="max-width:1360px">${head}<div class="grid-cards" style="grid-template-columns:repeat(auto-fill,minmax(min(100%,340px),1fr));align-items:start">
+        ${Object.keys(U).map(dv => { const cnt = A.emps.filter(e => U[dv].includes(e.dept)).length;
+          return `<div class="card">${C4}<div class="part-head"><span class="card-title">${esc(dv)}</span>${cnt ? `<button class="link-cnt" data-act="unitList" data-depts="${esc(JSON.stringify(U[dv]))}" title="ดูรายชื่อทั้งฝ่ายในแท็บพนักงาน">${cnt} คน</button>` : '<span class="small muted">0 คน</span>'}</div>
+            ${U[dv].length ? '' : '<span class="small muted">ยังไม่มีแผนก</span>'}
+            <div style="display:flex;flex-direction:column;gap:6px">${U[dv].map(x => { const n = A.emps.filter(e => e.dept === x).length; const op = M.unitOpen === x, ppl = op ? A.emps.filter(e => e.dept === x && actOk(e, M.act)).sort((a, b) => b.level - a.level || a.name.localeCompare(b.name, 'th')) : []; return `<div class="unit-row"><span style="min-width:0">${esc(x)}</span><span class="small muted nowrap" style="display:flex;gap:6px;align-items:center">${n ? `<button class="link-cnt" data-act="unitOpen" data-name="${esc(x)}" aria-expanded="${op}">${n} คน ${op ? '▴' : '▾'}</button>` : '0 คน'} <select class="input" style="width:auto;min-height:28px;padding:2px 6px;font-size:12px" data-movedept="${esc(x)}" title="ย้ายไปฝ่าย">${Object.keys(U).map(o => `<option ${o === dv ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>${n ? '' : `<button class="link-del" data-act="delDept" data-name="${esc(x)}">ลบ</button>`}</span></div>${op ? `<div class="unit-ppl">${actSeg('mg', M.act, A.emps.filter(e => e.dept === x))}${ppl.map(e => `<button class="unit-person" data-act="unitEmp" data-code="${esc(e.code)}" data-name="${esc(x)}"><span class="muted">${esc(e.code)}</span><span style="min-width:0;font-weight:500">${esc(e.name)}</span><span class="small muted">${esc(e.pos || '')} · ระดับ ${e.level}</span>${e.role !== 'emp' ? `<span class="tag tag-outline">${esc(ROLES[e.role])}</span>` : ''}${e.active === false ? '<span class="tag tag-neutral">ลาออก</span>' : ''}</button>`).join('') || '<span class="small muted" style="padding:6px">ไม่มีพนักงานตามสถานะที่เลือก</span>'}</div>` : ''}`; }).join('')}</div>
+            <div style="display:flex;gap:8px"><input class="input" placeholder="ชื่อแผนกใหม่" data-unitnew="${esc(dv)}" value="${esc(M.unitNew[dv] || '')}"><button class="btn" data-act="addDept" data-div="${esc(dv)}">เพิ่มแผนก</button></div>
+            ${U[dv].length ? '' : `<button class="btn btn-ghost" style="align-self:flex-start;color:var(--warn)" data-act="delDiv" data-div="${esc(dv)}">ลบฝ่ายนี้</button>`}</div>`; }).join('')}
+        <div class="card" style="border-style:dashed;box-shadow:none"><span class="card-title">เพิ่มฝ่ายใหม่</span><input class="input" placeholder="ชื่อฝ่าย" id="newDiv" value="${esc(M.newDiv)}"><button class="btn btn-primary" style="align-self:flex-start" data-act="addDiv">เพิ่มฝ่าย</button></div>
+      </div></div>`;
+    }
+    const q = M.q.trim();
+    const rows = A.emps.filter(e => (!q || e.name.includes(q) || e.code.includes(q)) && (M.role === 'all' || e.role === M.role) && (!M.depts.length || M.depts.includes(e.dept)) && actOk(e, M.act));
+    const table = `<div class="card" style="padding:0;gap:0;flex:999 1 560px;min-width:0;overflow:hidden"><div class="scroll-x"><table class="table">
+      <thead><tr><th>รหัส</th><th>ชื่อ-นามสกุล</th><th>ตำแหน่ง</th><th>ระดับ</th><th>แผนก</th><th>บทบาท</th><th>หน่วยงานที่ดูแล</th><th>สถานะ</th></tr></thead>
+      <tbody>${rows.map(e => { const c = ROLE_COLORS[e.role] || ROLE_COLORS.emp, tags = [];
+        if (e.active === false) tags.push('<span class="tag tag-neutral">ลาออก</span>'); else if (e.status === 'check') tags.push('<span class="tag tag-warn" title="' + esc(e.statusDetail) + '">ต้องตรวจสอบสถานะ</span>'); if (e.locked) tags.push('<span class="tag tag-warn">ถูกล็อก</span>'); if (e.evaluate === false) tags.push('<span class="tag tag-outline">ไม่ร่วมประเมิน</span>');
+        return `<tr class="click" data-act="mgEdit" data-code="${esc(e.code)}" ${d && !d.isNew && d.code === e.code ? 'style="background:var(--a100)"' : ''}><td class="muted">${esc(e.code)}</td><td class="nowrap" style="font-weight:500">${esc(e.name)}</td><td>${esc(e.pos)}</td><td>${e.level}</td><td class="nowrap">${esc(e.dept)}</td>
+          <td><span class="tag" style="background:${c[0]};color:${c[1]}">${ROLES[e.role]}</span></td><td class="small muted" style="max-width:240px">${e.role === 'emp' ? 'เฉพาะตนเอง' : esc(scopeOf(e.scopeType, e.scopeValues))}</td>
+          <td><div style="display:flex;gap:6px;flex-wrap:wrap">${tags.join('') || '<span class="small" style="color:#047857">ปกติ</span>'}</div></td></tr>`; }).join('')}</tbody></table>
+      ${rows.length ? '' : '<p class="empty" style="padding:20px">ไม่พบพนักงานตามเงื่อนไข</p>'}</div></div>`;
+    let panel = '';
+    if (d && !d.isNew && M.mode === 'profile') {
+      const e = A.emps.find(x => x.code === d.code) || d, dv = Object.keys(U).find(k => U[k].includes(e.dept)) || '-';
+      const thDate = s => fmtD(s);
+      const span = s => { if (!s) return ''; const a = new Date(s), b = new Date(); let y = b.getFullYear() - a.getFullYear(), mo = b.getMonth() - a.getMonth(); if (b.getDate() < a.getDate()) mo--; if (mo < 0) { y--; mo += 12; } return y + ' ปี ' + mo + ' เดือน'; };
+      const tel = e.phone ? String(e.phone).replace(/^(\d{3})(\d{3})(\d+)$/, '$1-$2-$3') : (e.phone4 ? 'XXX-XXX-' + e.phone4 : '-');
+      const nid = e.nid4 ? 'X-XXXX-XXXXX-' + e.nid4.slice(0, 2) + '-' + e.nid4.slice(2) : '-';
+      const on = e.active !== false, info = [['ตำแหน่ง', e.pos], ['ระดับ', 'เกรด ' + e.level], ['แบบฟอร์มประเมิน', FNAME(e.fcode || pickForm(e.level, e.pos, e.evalForm)) + (e.evalForm ? ' · กำหนดโดย HR' : '')], ['ฝ่าย', dv], ['แผนก', e.dept],
+        ['วันที่เริ่มงาน', thDate(e.start) + (e.start ? ' · อายุงาน ' + span(e.start) : '')], ['วันเกิด', thDate(e.dob) + (e.dob ? ' · อายุ ' + span(e.dob).split(' ปี')[0] + ' ปี' : '')],
+        ['เบอร์โทรศัพท์', tel], ['เลขบัตรประชาชน', nid], ['บทบาทในระบบ', ROLES[e.role]], ['หน่วยงานที่ดูแล', e.role === 'emp' ? 'เฉพาะตนเอง' : scopeOf(e.scopeType, e.scopeValues)], ['สถานะ (ไฟล์สแกน)', e.statusDetail || '-'], ['วันลาออก', e.resign ? fmtD(e.resign) : '-'], ['สแกนเข้างานล่าสุด', e.lastScan ? fmtD(e.lastScan) : '-'], ['ร่วมประเมินรอบนี้', e.active === false ? 'ไม่รับประเมิน (ลาออก)' : e.evaluate === false ? 'ไม่ร่วม' : 'ร่วม']];
+      panel = `<aside style="flex:1 1 400px;min-width:0;display:flex;flex-direction:column;gap:18px">
+        <div class="card" style="gap:18px">${C4}
+          <div class="part-head"><div style="display:flex;gap:14px;align-items:center;min-width:0"><span class="avatar" style="width:52px;height:52px;font-size:22px;flex:none">${esc((e.name || '?').trim().charAt(0))}</span><div style="min-width:0"><span class="kicker">โปรไฟล์ · รหัส ${esc(e.code)}</span><div class="card-title">${esc(e.name)}</div></div></div><button class="btn btn-ghost" data-act="mgClose">ปิด</button></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap"><span class="tag ${on ? 'tag-accent' : 'tag-neutral'}">${on ? 'ทำงานอยู่' : 'ลาออก / ปิดใช้งาน'}</span><span class="small muted">isactive = ${on}</span>${e.locked ? '<span class="tag tag-warn">ถูกล็อก</span>' : ''}</div>
+          <dl style="display:grid;grid-template-columns:minmax(110px,auto) minmax(0,1fr);gap:8px 16px;margin:0;font-size:14px">${info.map(([k, v]) => `<dt class="muted">${k}</dt><dd style="margin:0">${esc(v || '-')}</dd>`).join('')}</dl>
+          ${e.remark ? `<div class="form-sec"><span class="sec-label">หมายเหตุ</span><span style="font-size:14px;white-space:pre-wrap">${esc(e.remark)}</span></div>` : ''}
+          <div class="toolbar"><button class="btn btn-primary" data-act="mgMode" data-mode="edit">${C4}แก้ไขข้อมูล</button>${e.locked ? `<button class="btn" data-act="unlock" data-code="${esc(e.code)}">ปลดล็อก</button>` : ''}</div>
+        </div>
+        ${S.mg.files ? profileHTML(S.mg.files) : '<span class="small muted">กำลังโหลดผลประเมินย้อนหลังและเอกสาร…</span>'}
+      </aside>`;
+    } else if (d) {
+      const staff = d.role !== 'emp', units = d.scopeType === 'div' ? Object.keys(U) : allD;
+      const vis = staff ? (d.scopeType === 'all' ? A.emps.filter(e => e.active !== false).length : A.emps.filter(e => e.active !== false && (d.scopeType === 'dept' ? d.scopeValues.includes(e.dept) : d.scopeValues.some(v => (U[v] || []).includes(e.dept)))).length) : 1;
+      const fld = (label, html) => `<div class="field"><label>${label}</label>${html}</div>`;
+      const inp = (k, extra = '') => `<input class="input" data-mg="${k}" value="${esc(d[k])}" ${extra}>`;
+      panel = `<aside style="flex:1 1 400px;min-width:0;display:flex;flex-direction:column;gap:18px">
+        <div class="card" style="gap:18px">${C4}
+          <div class="part-head"><div><span class="kicker">${d.isNew ? 'พนักงานใหม่' : 'รหัส ' + esc(d.code)}</span><div class="card-title">${d.isNew ? 'เพิ่มพนักงาน' : esc(d.name)}</div></div><button class="btn btn-ghost" data-act="mgClose">ปิด</button></div>
+          <div class="form-sec"><span class="sec-label">ข้อมูลพนักงาน</span><div class="form-grid">
+            ${fld('รหัสพนักงาน', inp('code', (d.isNew ? '' : 'disabled ') + 'placeholder="เช่น 65001"'))}${fld('ชื่อ-นามสกุล', inp('name'))}${fld('ตำแหน่ง', inp('pos'))}
+            ${fld('ระดับพนักงาน', `<select class="input" data-mg="level">${[1,2,3,4,5].map(n => `<option value="${n}" ${+d.level === n ? 'selected' : ''}>เกรด ${n}</option>`).join('')}</select>`)}
+            ${fld('แบบฟอร์มประเมิน', `<select class="input" data-mg="evalForm"><option value="" ${d.evalForm ? '' : 'selected'}>อัตโนมัติ · ${esc(FSHORT(pickForm(d.level, d.pos, '')))}</option>${Object.keys(SCORING.FORMS).map(k => `<option value="${k}" ${d.evalForm === k ? 'selected' : ''}>${esc(SCORING.FORMS[k].short)} · ${esc(SCORING.FORMS[k].name)}</option>`).join('')}</select>`)}
+            ${fld('แผนก', `<select class="input" data-mg="dept">${Object.keys(U).map(dv => `<optgroup label="${esc(dv)}">${U[dv].map(x => `<option ${d.dept === x ? 'selected' : ''}>${esc(x)}</option>`).join('')}</optgroup>`).join('')}</select>`)}
+            ${fld('วันที่เริ่มงาน (dd/MM/yyyy)', dateIn('data-mg="start"', d.start))}</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap"><div class="field" style="flex-basis:100%"><label>สถานะพนักงาน (isactive)</label><div class="seg"><label><input type="radio" name="mgisactive" data-mgactive="true" ${d.active ? 'checked' : ''}>ปกติ · true</label><label><input type="radio" name="mgisactive" data-mgactive="false" ${d.active ? '' : 'checked'}>ลาออก · false</label></div><span class="small muted">ลาออก = เข้าสู่ระบบไม่ได้ และไม่ถูกนับในรอบประเมิน · พนักงานใหม่ค่าเริ่มต้นเป็นปกติ</span></div><label class="chip sm" ${d.active ? '' : 'title="พนักงานลาออก ไม่รับประเมิน" style="opacity:.55"'}><input type="checkbox" data-mg="evaluate" ${d.evaluate && d.active ? 'checked' : ''} ${d.active ? '' : 'disabled'}>ร่วมประเมินรอบนี้${d.active ? '' : ' (ลาออก = ไม่รับประเมิน)'}</label></div></div>
+          <div class="form-sec"><span class="sec-label">ข้อมูลยืนยันตัวตน (ใช้ตอนพนักงานเข้าสู่ระบบ)</span><div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))">
+            ${fld('4 ตัวท้ายบัตรประชาชน', inp('nid4', 'inputmode="numeric" maxlength="4" placeholder="XXXX"'))}${fld('วันเกิด (dd/MM/yyyy พ.ศ.)', inp('dobTh', 'placeholder="14/03/2513"'))}${fld('4 ตัวท้ายเบอร์โทร', inp('phone4', 'inputmode="numeric" maxlength="4" placeholder="XXXX"'))}</div>
+            ${fld('เบอร์โทรศัพท์ (เต็ม)', inp('phone', 'inputmode="tel" placeholder="08XXXXXXXX"'))}${fld('หมายเหตุ (ใส่ #ลาออก เมื่อพนักงานลาออก)', `<textarea class="input" rows="2" data-mg="remark">${esc(d.remark)}</textarea>`)}</div>
+          <div class="form-sec"><span class="sec-label">บทบาทในระบบ</span>
+            <select class="input" data-mg="role">${Object.keys(ROLES).map(k => `<option value="${k}" ${d.role === k ? 'selected' : ''}>${ROLES[k]}</option>`).join('')}</select>
+            ${staff ? `<div class="field"><label>ขอบเขตที่ดูแล</label><div class="seg">${[['dept','แผนก'],['div','ฝ่าย'],['all','ทั้งบริษัท']].map(([v, l]) => `<label><input type="radio" name="mgscope" data-mgscope="${v}" ${d.scopeType === v ? 'checked' : ''}>${l}</label>`).join('')}</div></div>
+              ${d.scopeType !== 'all' ? `<div class="field"><label>${d.scopeType === 'div' ? 'ฝ่ายที่ดูแล' : 'แผนกที่ดูแล'} · เลือกได้หลายหน่วยงาน</label>${d.scopeType === 'div' ? unitPicker(Object.keys(U).sort((a, b) => a.localeCompare(b, 'th')).map(dv => ({ dv, depts: [] })), d.scopeValues, 'scope', { divOnly: true, open: true, label: 'ฝ่าย', empty: 'ยังไม่ได้เลือก' }) : unitPicker(Object.keys(U).sort((a, b) => a.localeCompare(b, 'th')).map(dv => ({ dv, depts: U[dv].slice().sort((a, b) => a.localeCompare(b, 'th')) })), d.scopeValues, 'scope', { open: true, label: 'แผนก', empty: 'ยังไม่ได้เลือก' })}</div>` : ''}
+              <span class="small" style="color:var(--a700)">มองเห็นพนักงาน ${vis} คน</span>
+              ${fld(d.hasPwd ? 'ตั้งรหัสผ่านใหม่' : 'รหัสผ่าน', `<input class="input" type="password" data-mg="password" placeholder="${d.hasPwd ? 'เว้นว่างไว้หากไม่เปลี่ยน' : 'อย่างน้อย 6 ตัวอักษร'}" value="${esc(d.password)}">`)}`
+            : '<span class="small muted">พนักงานเข้าสู่ระบบด้วยคำถามยืนยันตัวตน และเห็นเฉพาะผลประเมินของตนเอง</span>'}</div>
+          ${d.locked ? `<div class="alert" style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span>บัญชีถูกล็อกจากการเข้าสู่ระบบผิด 3 ครั้ง</span><button class="btn" data-act="unlock" data-code="${esc(d.code)}">ปลดล็อก</button></div>` : ''}
+          ${M.err ? `<div class="alert">${esc(M.err)}</div>` : ''}
+          <div class="toolbar"><button class="btn btn-primary btn-lg" data-act="mgSave">บันทึก</button><button class="btn btn-lg" data-act="${d.isNew ? 'mgClose' : 'mgMode'}" data-mode="profile">ยกเลิก</button></div>
+        </div>
+        ${!d.isNew && S.mg.files ? filesHTML(S.mg.files) : ''}
+      </aside>`;
+    }
+    return `<div class="page" style="max-width:1360px">${head}
+      <div class="toolbar">
+        <input class="input" style="flex:1 1 220px;max-width:300px" placeholder="ค้นหาชื่อ หรือรหัสพนักงาน" value="${esc(M.q)}" data-input="mgq">
+        <select class="input" style="width:auto;min-width:200px" data-change="mgrole"><option value="all">ทุกบทบาท</option>${Object.keys(ROLES).map(k => `<option value="${k}" ${M.role === k ? 'selected' : ''}>${ROLES[k]}</option>`).join('')}</select>
+        ${actSeg('mg', M.act, A.emps)}${A.emps.some(e => e.status === 'check') ? `<label class="chip sm" style="${M.act === 'check' ? 'border-color:var(--warn);color:var(--warn)' : ''}"><input type="radio" name="act-mg" value="check" data-act-f="mg" ${M.act === 'check' ? 'checked' : ''}>ต้องตรวจสอบ ${A.emps.filter(e => e.status === 'check').length}</label>` : ''}
+        <span class="small muted">${rows.length} คน</span>
+        ${deptChips(allD, M.depts, 'mg')}
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start">${table}${panel}</div>
+    </div>`;
+  }
+
+  // ───────── events ─────────
+  function refreshSummary() { const s = $('#summary'); if (s) s.innerHTML = summaryHTML(); }
+  function mutate(fn, full) { fn(S.sel.scores); S.errors = []; if (full) { const y = window.scrollY; render(); window.scrollTo(0, y); } else refreshSummary(); }
+
+  async function onClick(e) {
+    const el = e.target.closest('[data-act]'); if (!el) return;
+    const a = el.dataset.act, d = el.dataset;
+    if (el.tagName === 'INPUT' && !['lv','sc','sup','tog'].includes(a)) return;
+    if (a === 'open') { e.stopPropagation(); return openEval(d.code); }
+    if (a === 'back') return go(me().role === 'emp' ? 'mine' : 'list');
+    if (a === 'guide') { S.guide = !S.guide; return render(); }
+    if (a === 'lv') return mutate(sc => { const i = +d.i, j = +d.j, o = FN(S.sel.emp.fcode).c[i].o[j]; sc.lv[i] = j; if (sc.sc[i] == null || sc.sc[i] < o[1] || sc.sc[i] > o[2]) sc.sc[i] = o[2]; }, true);
+    if (a === 'sc') return mutate(sc => { sc.sc[+d.i] = +d.n; }, true);
+    if (a === 'sup') return mutate(sc => { sc.sup[+d.p][+d.i] = +d.n; }, true);
+    if (a === 'tog') return mutate(sc => { const l = (d.key === 'strengths' ? SCORING.STR : SCORING.IMP)[+d.i]; sc[d.key] = sc[d.key].includes(l) ? sc[d.key].filter(x => x !== l) : sc[d.key].concat([l]); });
+    if (a === 'draft') { S.sel = await run(api('apiSaveDraft', S.sel.emp.code, S.sel.scores), 'บันทึกร่างแล้ว'); return render(); }
+    if (a === 'submit') {
+      const c = calcScore(S.sel.emp.form, S.sel.att, S.sel.scores, W(S.sel.emp.form));
+      if (!c.complete) { S.errors = c.missing; return refreshSummary(); }
+      S.sel = await run(api('apiSubmit', S.sel.emp.code, S.sel.scores), 'ส่งแบบประเมินของ ' + S.sel.emp.name + ' แล้ว');
+      S.list = await run(api('apiListEmployees')); return render();
+    }
+    if (a === 'approve') { const lbl = APPROVE_LABEL[S.sel.status]; S.sel = await run(api('apiApprove', S.sel.emp.code), lbl + 'แล้ว'); S.list = await run(api('apiListEmployees')); return render(); }
+    if (a === 'return') { const note = ($('#retNote') || {}).value || ''; S.sel = await run(api('apiReturn', S.sel.emp.code, note), 'ส่งกลับให้ผู้ประเมินแก้ไขแล้ว'); S.list = await run(api('apiListEmployees')); return render(); }
+    if (a === 'quickApprove') { const r = S.list.find(x => x.code === d.code); await run(api('apiApprove', d.code), r.name + ' · ' + APPROVE_LABEL[r.status] + 'แล้ว'); S.list = await run(api('apiListEmployees')); return render(); }
+    if (a === 'toReport') { if (me().role === 'emp') { S.view = 'report'; render(); window.scrollTo(0, 0); return; } return go('report'); }
+    if (a === 'print') return window.print();
+    if (a === 'rpOpen') return openReport(d.code);
+    if (a === 'fvOpen') { S.fv = d.k; render(); window.scrollTo(0, 0); return; }
+    if (a === 'fvBack') { S.fv = null; render(); window.scrollTo(0, 0); return; }
+    if (a === 'cyNew') { const y = new Date().getFullYear() + 543; S.cyErr = ''; S.cyD = { year: y, round: 1, from: '', to: '', name: '' }; return rerender(); }
+    if (a === 'cyEdit') { const x = S.cy.find(z => z.id === Number(d.id)); S.cyErr = ''; S.cyD = { id: x.id, year: x.year, round: x.round, from: x.from || '', to: x.to || '', name: x.name }; return rerender(); }
+    if (a === 'cyCancel') { S.cyD = null; return rerender(); }
+    if (a === 'cySave') {
+      try { const wasActive = S.cyD.id && S.cy.find(z => z.id === S.cyD.id).active; S.cy = await withLoading('กำลังบันทึกรอบการประเมิน กรุณารอสักครู่…', () => api('apiCycleSave', S.cyD)); S.cyD = null; S.cyErr = ''; toast('บันทึกรอบการประเมินแล้ว'); if (wasActive) return cycleSwitched(); }
+      catch (err) { S.cyErr = err.message || String(err); }
+      return rerender();
+    }
+    if (a === 'cyOn') { const x = S.cy.find(z => z.id === Number(d.id)); if (!confirm('เปิดใช้ "' + x.name + '" เป็นรอบปัจจุบัน?\nรอบที่เปิดอยู่ตอนนี้จะถูกปิด (ข้อมูลไม่หาย)')) return; await run(api('apiCycleActivate', x.id), 'เปิดใช้ ' + x.name + ' แล้ว'); return cycleSwitched(); }
+    if (a === 'cyDel') { const x = S.cy.find(z => z.id === Number(d.id)); if (!confirm('ลบ "' + x.name + '"?' + (x.att ? '\nสถิติมาทำงานของรอบนี้ ' + x.att + ' คน จะถูกลบด้วย' : '') + (x.active ? '\nรอบนี้เปิดใช้งานอยู่' : ''))) return; S.cy = await run(api('apiCycleDelete', x.id), 'ลบรอบแล้ว'); return rerender(); }
+    if (a === 'attReset') { S.attD = {}; S.attMsg = null; return rerender(); }
+    if (a === 'attTpl') return attTemplate();
+    if (a === 'empTpl') return empTemplate();
+    if (a === 'empImpX') { S.empImp = null; return rerender(); }
+    if (a === 'empImpGo') { const res = await run(api('apiImportEmployees', S.empImp.data, false), 'นำเข้าพนักงานแล้ว'); S.empImp.res = res; S.adm = await run(api('apiAdminData')); return rerender(); }
+    if (a === 'attSave') {
+      const rows = Object.keys(S.attD).map(code => Object.assign({ code }, S.att.rows.find(x => x.code === code).att, S.attD[code]));
+      S.att = await run(api('apiAttSave', rows), 'บันทึกสถิติมาทำงาน ' + rows.length + ' คนแล้ว · คำนวณคะแนนใหม่แล้ว'); S.attD = {}; S.attMsg = null; return rerender();
+    }
+    if (a === 'saveW') { const f = d.form; S.boot.weights = await run(api('apiSaveWeights', f, S.wDraft[f]), 'บันทึกน้ำหนักแล้ว · คำนวณคะแนนใหม่ทั้งหมด'); S.wDraft = null; return render(); }
+    if (a === 'unlock') { S.adm = await run(api('apiUnlock', d.code), 'ปลดล็อกรหัส ' + d.code + ' แล้ว'); if (S.mg.d) S.mg.d.locked = false; return rerender(); }
+    if (a === 'clearChips') { e.preventDefault(); if (d.key === 'f') S.f.depts = []; else if (d.key === 'scope') S.mg.d.scopeValues = []; else S.mg.depts = []; return rerender(); }
+    if (a === 'prevToggle') { S.prevOpen = S.prevOpen === d.k ? null : d.k; return rerender(); }
+    if (a === 'delFile') { if (!confirm('ลบไฟล์นี้?')) return; const files = await run(api('apiDeleteFile', d.code, d.id), 'ลบไฟล์แล้ว'); if (S.sel && S.sel.emp.code === d.code) S.sel.files = files; if (S.mg.files && S.mg.files.emp.code === d.code) S.mg.files.files = files; return rerender(); }
+    if (a === 'mgMode') { S.mg.mode = d.mode; S.mg.err = ''; if (d.mode === 'profile') editEmp(S.mg.d.code); else S.mg.mode = 'edit'; return rerender(); }
+    if (a === 'mgNew') { S.mg.tab = 'emp'; S.mg.mode = 'edit'; S.mg.d = blankEmp(); S.mg.err = ''; S.mg.files = null; return rerender(); }
+    if (a === 'mgEdit') { editEmp(d.code); return rerender(); }
+    if (a === 'unitOpen') { S.mg.unitOpen = S.mg.unitOpen === d.name ? null : d.name; return rerender(); }
+    if (a === 'unitList') { S.mg.tab = 'emp'; S.mg.depts = JSON.parse(d.depts); S.mg.d = null; S.mg.q = ''; render(); window.scrollTo(0, 0); return; }
+    if (a === 'unitEmp') { S.mg.tab = 'emp'; S.mg.depts = [d.name]; S.mg.q = ''; editEmp(d.code); S.mg.mode = 'profile'; render(); window.scrollTo(0, 0); return; }
+    if (a === 'mgClose') { S.mg.d = null; S.mg.err = ''; return rerender(); }
+    if (a === 'mgSave') {
+      try { S.adm = await run(api('apiSaveEmployee', S.mg.d), 'บันทึกข้อมูล ' + S.mg.d.name + ' แล้ว'); S.mg.err = ''; editEmp(S.mg.d.code); S.mg.mode = 'profile'; if (S.mg.d.code === me().empCode) { S.boot = await api('apiBootstrap'); shell(); } }
+      catch (err) { S.mg.err = (err && err.message) || String(err); }
+      return rerender();
+    }
+    if (a === 'addDept') { const v = (S.mg.unitNew[d.div] || '').trim(); if (!v) return; S.adm = await run(api('apiAddDepartment', d.div, v), 'เพิ่ม ' + v + ' แล้ว'); S.mg.unitNew[d.div] = ''; return rerender(); }
+    if (a === 'delDept') { if (!confirm('ลบ ' + d.name + ' ?')) return; S.adm = await run(api('apiDeleteDepartment', d.name), 'ลบ ' + d.name + ' แล้ว'); return rerender(); }
+    if (a === 'addDiv') { const v = (S.mg.newDiv || '').trim(); if (!v) return; S.adm = await run(api('apiAddDivision', v), 'เพิ่ม' + v + 'แล้ว'); S.mg.newDiv = ''; return rerender(); }
+    if (a === 'delDiv') { if (!confirm('ลบ' + d.div + ' ?')) return; S.adm = await run(api('apiDeleteDivision', d.div), 'ลบ' + d.div + 'แล้ว'); return rerender(); }
+  }
+  function onInput(e) {
+    const t = e.target;
+    if (t.dataset.input === 'q') { S.f.q = t.value; const pos = t.selectionStart; render(); const n = $('[data-input="q"]'); n.focus(); n.setSelectionRange(pos, pos); return; }
+    if (t.dataset.bind) { const [k, i] = t.dataset.bind.split('.'); S.sel.scores[k][+i] = t.value; return; }
+    if (t.dataset.w) { const [f, i] = t.dataset.w.split('.'); S.wDraft[f][+i] = Number(t.value) || 0; const sum = S.wDraft[f].reduce((a, b) => a + b, 0); $('#sum-' + f).textContent = sum + '%'; $('#saveW-' + f).disabled = sum !== 100; $('#msg-' + f).textContent = sum === 100 ? '' : 'รวมต้องเท่ากับ 100%'; return; }
+    if (t.dataset.cy) { S.cyD[t.dataset.cy] = t.dataset.date ? (parseD(t.value) ?? t.value) : t.value; if (t.dataset.date) t.style.borderColor = parseD(t.value) === null ? 'var(--warn)' : ''; return; }
+    if (t.dataset.att) {
+      const [code, k] = t.dataset.att.split('|'), r = S.att.rows.find(x => x.code === code), v = Math.max(0, Number(t.value) || 0);
+      const d = S.attD[code] = S.attD[code] || {};
+      if (v === Number(r.att[k] || 0)) delete d[k]; else d[k] = v;
+      if (!Object.keys(d).length) delete S.attD[code];
+      const tr = t.closest('tr'), cells = tr.querySelectorAll('td'); const tmp = document.createElement('tbody'); tmp.innerHTML = '<tr>' + attRowCells(r) + '</tr>';
+      const nc = tmp.querySelectorAll('td'); cells[cells.length - 2].replaceWith(nc[0]); cells[cells.length - 1].replaceWith(nc[1]);
+      t.style.borderColor = k in d ? 'var(--accent)' : ''; t.style.background = k in d ? 'var(--a100)' : '';
+      const n = Object.keys(S.attD).length, sb = $('[data-act="attSave"]'), rb = $('[data-act="attReset"]');
+      if (sb) { sb.disabled = !n; sb.lastChild.textContent = 'บันทึก' + (n ? ' (' + n + ' คน)' : ''); } if (rb) rb.disabled = !n;
+      return;
+    }
+    if (t.dataset.input === 'attq') { S.attq = t.value; const pos = t.selectionStart; render(); const n = $('[data-input="attq"]'); n.focus(); n.setSelectionRange(pos, pos); return; }
+    if (t.dataset.input === 'rpq') { S.rpq = t.value; const pos = t.selectionStart; render(); const n = $('[data-input="rpq"]'); n.focus(); n.setSelectionRange(pos, pos); return; }
+    if (t.dataset.input === 'mgq') { S.mg.q = t.value; const pos = t.selectionStart; render(); const n = $('[data-input="mgq"]'); n.focus(); n.setSelectionRange(pos, pos); return; }
+    if (t.dataset.mg && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA') && t.type !== 'checkbox') { S.mg.d[t.dataset.mg] = t.dataset.date ? (parseD(t.value) ?? t.value) : t.value; if (t.dataset.date) { t.style.borderColor = parseD(t.value) === null ? 'var(--warn)' : ''; return; } if (t.dataset.mg === 'remark' && /#ลาออก/.test(t.value) && S.mg.d.active) { S.mg.d.active = false; const rb = $('[data-mgactive="false"]'); if (rb) rb.checked = true; } return; }
+    if (t.dataset.unitnew) { S.mg.unitNew[t.dataset.unitnew] = t.value; return; }
+    if (t.id === 'newDiv') { S.mg.newDiv = t.value; return; }
+  }
+  async function onChange(e) {
+    const t = e.target, c = t.dataset.change;
+    if (t.dataset.chipdiv) {
+      const k = t.dataset.chipdiv, tgt = k === 'f' ? S.f.depts : k === 'mg' ? S.mg.depts : S.mg.d.scopeValues;
+      t.closest('.ug').querySelectorAll('[data-chip]').forEach(cb => { const i = tgt.indexOf(cb.value); if (t.checked && i < 0) tgt.push(cb.value); if (!t.checked && i >= 0) tgt.splice(i, 1); });
+      return rerender();
+    }
+    if (t.dataset.chip) {
+      const tgt = t.dataset.chip === 'f' ? S.f.depts : t.dataset.chip === 'mg' ? S.mg.depts : S.mg.d.scopeValues, v = t.value, i = tgt.indexOf(v);
+      if (t.checked && i < 0) tgt.push(v); if (!t.checked && i >= 0) tgt.splice(i, 1);
+      return rerender();
+    }
+    if (c === 'st') { S.f.st = t.value; return render(); }
+    if (c === 'report') return openReport(t.value);
+    if (c === 'rpcycle') { S.rp = await run(api('apiReportList', Number(t.value))); S.sel = null; S.rpHist = null; S.f.depts = S.f.depts.filter(x => S.rp.rows.some(r => r.dept === x)); return render(); }
+    if (t.dataset.num) return mutate(sc => { sc[t.dataset.num] = Math.max(0, parseInt(t.value) || 0); }, true);
+    if (t.dataset.upload) return upload(t.dataset.upload, t.files, t);
+    if (t.dataset.movedept) { S.adm = await run(api('apiMoveDepartment', t.dataset.movedept, t.value), 'ย้าย ' + t.dataset.movedept + ' ไป' + t.value + 'แล้ว'); return rerender(); }
+    if (t.dataset.mgtab) { S.mg.tab = t.dataset.mgtab; return rerender(); }
+    if (t.dataset.empfile) { const f = t.files[0]; t.value = ''; if (!f) return; const rd = new FileReader(); rd.onload = () => empImport(String(rd.result)); rd.readAsText(f, 'utf-8'); return; }
+    if (t.dataset.attfile) { const f = t.files[0]; t.value = ''; if (!f) return; const rd = new FileReader(); rd.onload = () => attImport(String(rd.result)); rd.readAsText(f, 'utf-8'); return; }
+    if (c === 'mgrole') { S.mg.role = t.value; return rerender(); }
+    if (t.dataset.helptab) { S.helpTab = t.dataset.helptab; return render(); }
+    if (t.dataset.empview) { const on = t.dataset.empview === 'on'; const r = await run(api('apiSetEmpView', on), on ? 'เปิดให้พนักงานดูผลประเมินแล้ว' : 'ปิดการดูผลประเมินของพนักงานแล้ว'); S.boot.empView = r.empView; S.boot.empViewBy = r.by; return rerender(); }
+    if (t.dataset.actF) { if (t.dataset.actF === 'mg') S.mg.act = t.value; else S.f.act = t.value; return rerender(); }
+    if (t.dataset.mgactive) { S.mg.d.active = t.dataset.mgactive === 'true'; if (!S.mg.d.active) S.mg.d.evaluate = false; /* ลาออก → ค่าเริ่มต้นไม่รับประเมิน */ return rerender(); }
+    if (t.dataset.mgscope) { S.mg.d.scopeType = t.dataset.mgscope; S.mg.d.scopeValues = []; return rerender(); }
+    if (t.dataset.mg) { const k = t.dataset.mg; S.mg.d[k] = t.type === 'checkbox' ? t.checked : t.value; if (k === 'role' && t.value !== 'emp' && !['dept','div','all'].includes(S.mg.d.scopeType)) S.mg.d.scopeType = 'dept'; if (['role','active','evaluate'].includes(k)) return rerender(); return; }
+  }
+
+  init();
+})();
+</script>

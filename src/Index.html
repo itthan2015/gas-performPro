@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Prompt:wght@400;500;600&family=Sarabun:wght@400;500;700&display=swap">
+  <?!= include('Styles'); ?>
+  <script>
+    // แสดงข้อผิดพลาดบนหน้าจอแทนการค้างที่ "กำลังโหลด…"
+    window.ppFail = function (msg) {
+      var b = document.querySelector('.boot'); if (!b) return;
+      b.innerHTML = '<span class="brand">PERFORMPRO</span><span style="color:#9a3412;max-width:520px;padding:0 16px">เกิดข้อผิดพลาด: ' + String(msg).replace(/[<>&]/g, '') + '</span>' +
+        '<button class="btn btn-primary" style="margin-top:8px;justify-self:center" onclick="try{sessionStorage.clear()}catch(e){};location.reload()">ลองใหม่</button>';
+    };
+    window.addEventListener('error', function (e) { window.ppFail((e && e.message) || 'สคริปต์หน้าเว็บทำงานผิดพลาด'); });
+    window.addEventListener('unhandledrejection', function (e) { var r = e && e.reason; if (document.querySelector('.boot')) window.ppFail((r && r.message) || r || 'ไม่ทราบสาเหตุ'); });
+  </script>
+</head>
+<body>
+  <div id="app">
+    <div class="boot"><span class="brand">PERFORMPRO</span><span class="muted">กำลังโหลด…</span><span class="small muted" id="bootStep">ขั้นที่ 1/4 · เปิดหน้าเว็บ</span><span class="small muted">เวอร์ชัน 3.3</span></div>
+  </div>
+  <script>window.ppStep = function (t) { var el = document.getElementById('bootStep'); if (el) el.textContent = t; }; ppStep('ขั้นที่ 2/4 · โหลดหน้าเว็บแล้ว');</script>
+  <div id="toast" class="toast" hidden></div>
+  <div id="busy" class="busy" hidden><span></span></div>
+  <div id="loadDlg" class="load-backdrop" hidden role="alertdialog" aria-modal="true" aria-live="assertive" aria-labelledby="loadTitle">
+    <div class="load-dialog"><span class="load-spin" aria-hidden="true"></span><div class="load-text"><b id="loadTitle">ระบบกำลังทำงาน</b><span id="loadMsg">กำลังโหลดข้อมูล กรุณารอสักครู่…</span></div></div>
+  </div>
+  <script>
+  (function () {
+    try {
+      var b = atob('<?!= clientBundle_('ScoringClient') ?>'), u = new Uint8Array(b.length);
+      for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+      var s = document.createElement('script'); s.textContent = new TextDecoder('utf-8').decode(u); document.body.appendChild(s);
+    } catch (e) { window.ppFail && window.ppFail('โหลดกฎคิดคะแนนไม่สำเร็จ: ' + e.message); }
+  })();
+  </script>
+  <script>
+  (function () {
+    try {
+      var b = atob('<?!= clientBundle_('App') ?>'), u = new Uint8Array(b.length);
+      for (var i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+      var s = document.createElement('script'); s.textContent = new TextDecoder('utf-8').decode(u); document.body.appendChild(s);
+    } catch (e) { window.ppFail && window.ppFail('โหลดสคริปต์หลักไม่สำเร็จ: ' + e.message); }
+  })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+# ข้อมูลส่วนบุคคลของพนักงาน (เลขบัตร วันเกิด เบอร์โทร) — ห้าม commit
+data-private/
+*.xlsx
+*.xls
+uploads/
+# clasp (มี scriptId ของโปรเจกต์จริง)
+.clasp.json
+.clasprc.json
+node_modules/
+.DS_Store
