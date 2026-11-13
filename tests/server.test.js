@@ -93,4 +93,18 @@ assert.strictEqual(w.evalOf_(1, 'e1').grade, 'B'); assert.strictEqual(w.evalOf_(
 w.apiGradeCfgSave('t', 1, null);
 assert.strictEqual(w.__st.cycles[0].grade_cfg, null);
 assert.throws(() => world({}).apiGradeCfgGet('t'), /no role/);
+// 7) ยังไม่ได้รัน SQL 92 (ไม่มีคอลัมน์ grade_cfg) → ประวัติยังแสดงได้ ไม่พังทั้งหน้า
+w = world({});
+const sb0 = w.sb_;
+w.sb_ = function (m, p) {
+  if (m === 'get' && /^PFormPro_evaluations\?emp_code=eq\./.test(p)) {
+    if (/grade_cfg/.test(p)) throw new Error('Supabase 400: column PFormPro_eval_cycles_1.grade_cfg does not exist');
+    return [{ id: 7, form: 'g1', scores: {}, total: 88, grade: 'A', cycle_id: 0, eval_cycles: { name: 'ประเมินผลการปฏิบัติงานประจำปี 2568 ครั้งที่ 2' } }];
+  }
+  if (m === 'get' && /^PFormPro_eval_history/.test(p)) return [];
+  return sb0.apply(this, arguments);
+};
+vm.runInContext('sb_ = this.sb_;', w);
+const pv = w.previous_('e1', 1);
+assert.strictEqual(pv.length, 1); assert.strictEqual(pv[0].label, 'ดีมาก');
 console.log('ok');

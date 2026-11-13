@@ -305,7 +305,8 @@ function legacyParts_(form, att, sc) {
 
 // ผลประเมินรอบก่อนหน้า (เฉพาะที่อนุมัติเสร็จสิ้นแล้ว)
 function previous_(code, activeCycleId) {
-  var rows = sb_('get', P + 'evaluations?emp_code=eq.' + q_(code) + '&status=eq.done&cycle_id=neq.' + activeCycleId + '&select=id,form,scores,total,grade,updated_at,cycle_id,eval_cycles:PFormPro_eval_cycles(name,data_from,data_to,grade_cfg)&order=cycle_id.desc');
+  var q = P + 'evaluations?emp_code=eq.' + q_(code) + '&status=eq.done&cycle_id=neq.' + activeCycleId + '&select=id,form,scores,total,grade,updated_at,cycle_id,eval_cycles:PFormPro_eval_cycles(name,data_from,data_to,grade_cfg)&order=cycle_id.desc', rows;
+  try { rows = sb_('get', q); } catch (e) { rows = sb_('get', q.replace(',grade_cfg)', ')')); } // ยังไม่ได้รัน sql/92 → ไม่มีคอลัมน์ grade_cfg
   if (!rows.length) return [];
   var hist = {};
   sb_('get', P + 'eval_history?evaluation_id=in.(' + rows.map(function (r) { return r.id; }).join(',') + ')&step=eq.submit&select=evaluation_id,actor_name')
