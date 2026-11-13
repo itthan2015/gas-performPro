@@ -21,14 +21,17 @@
 7. Template string ใน App.html: ห้ามใส่ `// comment` ในบรรทัดเดียวกับโค้ดที่ตามมา (เคยกลืน `return`)
 
 ## แผนที่โค้ด
-- หน้า (App.html `PAGE_TH` / `v*()`): dash แดชบอร์ด · list รายชื่อพนักงาน · eval แบบประเมิน · approve รายการรออนุมัติ · report รายงาน · mine ผลของฉัน · weights แบบฟอร์มประเมิน · staff จัดการพนักงาน · att สถิติมาทำงาน · cycles รอบการประเมิน · help คู่มือ
+- หน้า (App.html `PAGE_TH` / `v*()`): dash แดชบอร์ด · list รายชื่อพนักงาน · eval แบบประเมิน · approve รายการรออนุมัติ · report รายงาน · mine ผลของฉัน · weights แบบฟอร์มประเมิน · staff จัดการพนักงาน · att สถิติมาทำงาน · cycles รอบการประเมิน · grades เกณฑ์เกรดและโควต้า (hr/admin) · help คู่มือ
 - เมนูตามบทบาท: `NAV` (+ att ถ้า `S.boot.canAtt`, + help ทุกบทบาท) · เมนูซ้ายหุบได้ (hamburger)
-- API (Code.gs): apiLoginStart/apiLoginAnswer/apiStaffLogin/apiLogout · apiBootstrap · apiListEmployees · apiGetEvaluation · apiSaveDraft/apiSubmit/apiApprove/apiReturn · apiReportList/apiReportGet · apiUploadFile/apiDeleteFile · apiAttList/apiAttSave · apiCycleList/Save/Activate/Delete · apiAdminData/apiSaveEmployee/apiImportEmployees/apiUnlock · apiAdd/Delete Division/Department, apiMoveDepartment · apiSetEmpView · apiSaveWeights (เลิกใช้)
+- API (Code.gs): apiLoginStart/apiLoginAnswer/apiStaffLogin/apiLogout · apiBootstrap · apiListEmployees · apiGetEvaluation · apiSaveDraft/apiSubmit/apiApprove/apiReturn · apiReportList/apiReportGet · apiUploadFile/apiDeleteFile · apiAttList/apiAttSave · apiCycleList/Save/Activate/Delete · apiGradeCfgGet/apiGradeCfgSave · apiQuota (+ `apiBootstrap.quota`) · apiAdminData/apiSaveEmployee/apiImportEmployees/apiUnlock · apiAdd/Delete Division/Department, apiMoveDepartment · apiSetEmpView · apiSaveWeights (เลิกใช้)
 - ฟังก์ชันรันมือใน Editor: `testConnection`, `setupAdmin`, `setupDemoPasswords`, `setupLogo`
 - Script Properties: `SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `HR_UNITS` (ชื่อหน่วยงาน HR คั่น ,), `EMP_VIEW` (on/off), `EMP_VIEW_BY`, `LOGO_URL` (URL โลโก้ใน Supabase Storage — ใช้ทั้ง favicon/เมนู/login · `setupLogo()` ตั้งให้)
 - โลโก้/favicon: `Brand.gs` (`logoUrl_`, `setupLogo`) · ต้นฉบับ `assets/logo.svg`
 - แบบฟอร์ม (Scoring.gs `SCORING.FORMS`, rev.10.11.69): g1 · g2_tech · g2_sup · g2_adm · g3_dep · g3_techn · g3_tech2 · g3_off · g45 — เลือกอัตโนมัติจากเกรด+คำในตำแหน่ง (`formOf`) HR override รายคนได้
 - สายอนุมัติ: `skipDivStep(grade, pos)` ใน Scoring
+- เกรด 1–3: `eval_cycles.grade_cfg` (null = สเกลเดิม `GR_NEW`) · Scoring: `normGradeCfg`, `gradeLevels`, `gradeOf`, `gradeInfo`, `quotaCaps`, `quotaError` · `calcScore(form, att, sc, W, cfg)` ต้องส่ง cfg ของรอบเสมอ (Code: `cfgOf_(cycle)`, หน้าเว็บ: `gcfg()`)
+- โควต้า: ตรวจใน `apiSubmit` (LockService) · กลุ่ม `quotaGroup_` = ขอบเขตผู้ส่ง เกรด 1–3 active ร่วมประเมิน · นับสถานะ `QUOTA_ST`
+- เทส: `node tests/scoring.test.js && node tests/server.test.js && node tests/ui.test.js` (ui ใช้ Playwright) — รันทุกครั้งหลังแก้
 
 ## เมื่อผู้ใช้ขอเปลี่ยนกระบวนการ
 1. อัปเดต docs/PROCESS.md (กฎธุรกิจ) ก่อน แล้วแก้โค้ด

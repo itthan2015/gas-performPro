@@ -1,6 +1,15 @@
 # Changelog
 รูปแบบ: วันที่ · สิ่งที่เปลี่ยน · ไฟล์ที่ต้องวางทับ / SQL ที่ต้องรัน
 
+## 2026-11-13 — เกณฑ์เกรด 4 ระดับ + โควต้า
+- เกรด 1–3 ใช้เกณฑ์ของรอบ (`eval_cycles.grade_cfg`) ค่าเริ่มต้น A ≥ 85 · B 75–84.99 · C 70–74.99 · D < 70 · เกรด 4–5 คงสเกล 5…1
+- โควต้าต่อกลุ่มผู้ประเมิน A 20% · B 50% · C 30% · D ไม่จำกัด (ปัดเศษ ≥ .5 ขึ้น, แยกกันเด็ดขาด) · เกินโควต้า → ส่งไม่ได้
+- เมนูใหม่ "เกณฑ์เกรดและโควต้า" (HR/admin) แก้คะแนนขั้นต่ำ ชื่อระดับ % โควต้า รายรอบ · กลับไปใช้สเกลเดิมได้
+- หน้ารายชื่อแสดงแถบโควต้าของกลุ่ม · แดชบอร์ด/Help ใช้เกณฑ์ของรอบ · รอบเก่าที่ไม่มี grade_cfg แสดงสเกลเดิม
+- แก้หน้าแบบประเมินพังเมื่อกด "ดูเกณฑ์การให้เกรด"
+- เพิ่มเทส `node tests/scoring.test.js`, `node tests/server.test.js`, `node tests/ui.test.js` (Playwright)
+- ไฟล์ที่ต้องวางทับ: `Scoring.gs`, `ScoringClient.html`, `Code.gs`, `App.html`, `Styles.html` → รัน `sql/92_grade_cfg.sql` → Deploy **New version**
+
 ## 2026-11-12 — โลโก้อ่านจาก Script Property LOGO_URL
 - ทุกจุดเรียกรูปจาก Script Property `LOGO_URL` (ไฟล์อยู่ใน Supabase Storage) ไม่คำนวณ URL เองแล้ว · `setupLogo()` อัปโหลดแล้วตั้ง `LOGO_URL` ให้อัตโนมัติ
 - ไฟล์ที่ต้องวางทับ: `Brand.gs`, `Code.gs`, `Index.html` → รัน `setupLogo()` (หรือตั้ง `LOGO_URL` เอง) → Deploy **New version**
