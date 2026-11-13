@@ -42,8 +42,11 @@ create table if not exists "PFormPro_eval_cycles" (
   round int not null default 1,
   data_from date,
   data_to date,
-  is_active boolean default false
+  is_active boolean default false,
+  grade_cfg jsonb   -- เกณฑ์เกรด 1–3 + โควต้า (null = สเกลเดิม) ดู sql/92_grade_cfg.sql
 );
+
+alter table "PFormPro_eval_cycles" add column if not exists grade_cfg jsonb;
 
 create table if not exists "PFormPro_attendance" (
   cycle_id int references "PFormPro_eval_cycles"(id) on delete cascade,
@@ -190,8 +193,9 @@ update "PFormPro_employees" set evaluate = false where emp_code = 'GM001';
 
 create unique index if not exists pformpro_cycles_year_round_uq on "PFormPro_eval_cycles"(year_be, round);
 create unique index if not exists pformpro_cycles_one_active_uq on "PFormPro_eval_cycles"(is_active) where is_active;
-insert into "PFormPro_eval_cycles" (name, year_be, round, data_from, data_to, is_active)
-select 'ประเมินผลการปฏิบัติงานประจำปี 2569 ครั้งที่ 2', 2569, 2, '2026-04-01'::date, '2026-09-30'::date, not exists (select 1 from "PFormPro_eval_cycles" where is_active)
+insert into "PFormPro_eval_cycles" (name, year_be, round, data_from, data_to, is_active, grade_cfg)
+select 'ประเมินผลการปฏิบัติงานประจำปี 2569 ครั้งที่ 2', 2569, 2, '2026-04-01'::date, '2026-09-30'::date, not exists (select 1 from "PFormPro_eval_cycles" where is_active),
+  '{"levels":[{"g":"A","min":85,"label":"ดีเยี่ยม"},{"g":"B","min":75,"label":"ดี"},{"g":"C","min":70,"label":"พอใช้"},{"g":"D","min":0,"label":"ต้องปรับปรุง"}],"quota":{"A":20,"B":50,"C":30}}'::jsonb
 where not exists (select 1 from "PFormPro_eval_cycles" where year_be = 2569 and round = 2);
 
 insert into "PFormPro_attendance" (cycle_id, emp_code, late_min, sick_days, personal_days, absent_days)

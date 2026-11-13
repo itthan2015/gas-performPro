@@ -305,7 +305,7 @@ function legacyParts_(form, att, sc) {
 
 // ผลประเมินรอบก่อนหน้า (เฉพาะที่อนุมัติเสร็จสิ้นแล้ว)
 function previous_(code, activeCycleId) {
-  var rows = sb_('get', P + 'evaluations?emp_code=eq.' + q_(code) + '&status=eq.done&cycle_id=neq.' + activeCycleId + '&select=id,form,scores,total,grade,updated_at,cycle_id,eval_cycles:PFormPro_eval_cycles(name,data_from,data_to)&order=cycle_id.desc');
+  var rows = sb_('get', P + 'evaluations?emp_code=eq.' + q_(code) + '&status=eq.done&cycle_id=neq.' + activeCycleId + '&select=id,form,scores,total,grade,updated_at,cycle_id,eval_cycles:PFormPro_eval_cycles(name,data_from,data_to,grade_cfg)&order=cycle_id.desc');
   if (!rows.length) return [];
   var hist = {};
   sb_('get', P + 'eval_history?evaluation_id=in.(' + rows.map(function (r) { return r.id; }).join(',') + ')&step=eq.submit&select=evaluation_id,actor_name')
@@ -317,10 +317,10 @@ function previous_(code, activeCycleId) {
     } else if (r.form === 'new' || r.form === 'sup') {
       parts = legacyParts_(r.form, attOf_(r.cycle_id, code), sc);   // แบบฟอร์มเดิม: แสดงตามหัวข้อเดิม
     } else if (sc.sc) {
-      var k = calcScore(r.form, attOf_(r.cycle_id, code), sc);
+      var k = calcScore(r.form, attOf_(r.cycle_id, code), sc, null, cfgOf_(c));
       if (k.complete) parts = k.parts.map(function (p) { return { no: p.no, short: p.short, weight: p.weight, w: Math.round(p.weighted * 100) / 100 }; });
     }
-    var G = gradeScale(r.form), g = G.filter(function (x) { return x[0] === r.grade; })[0];
+    var g = gradeInfo(r.form, cfgOf_(c), r.grade);
     return { form: r.form, cycle: String(c.name || '').replace('ประเมินผลการปฏิบัติงาน', ''), from: c.data_from, to: c.data_to, total: Number(r.total), grade: r.grade, label: (sc.imported && sc.imported.label) || (g ? g[1] : ''),
       parts: parts, strengths: sc.strengths || [], improve: sc.improve || [], evaluator: hist[r.id] || '', doneAt: r.updated_at };
   });
@@ -343,6 +343,7 @@ function apiBootstrap(token) {
   var out = { me: { empCode: u.emp_code, name: u.full_name, role: u.role, scopeType: u.scope_type, scopeValues: u.scope_values }, cycle: c, weights: weights_() };
   if (u.role === 'hr' || u.role === 'admin') out.units = units_();
   out.canAtt = canAtt_(u);
+  out.quota = quotaSummary_(u, c);
   out.empView = empView_();
   if (u.role === 'hr' || u.role === 'admin') out.empViewBy = PropertiesService.getScriptProperties().getProperty('EMP_VIEW_BY') || '';
   return out;
@@ -398,7 +399,7 @@ function apiReportGet(token, cycleId, code) {
 }
 
 function save_(u, c, e, scores, status, extra) {
-  var calc = calcScore(e.fcode, attOf_(c.id, e.code), scores);
+  var calc = calcScore(e.fcode, attOf_(c.id, e.code), scores, null, cfgOf_(c));
   var row = { cycle_id: c.id, emp_code: e.code, form: e.fcode, status: status, scores: scores, total: calc.total, grade: calc.grade, updated_by: u.emp_code, updated_at: now_() };
   if (extra) for (var k in extra) row[k] = extra[k];
   return sb_('post', P + 'evaluations?on_conflict=cycle_id,emp_code', row, 'resolution=merge-duplicates,return=representation')[0];
@@ -414,9 +415,18 @@ function apiSaveDraft(token, code, scores) {
 function apiSubmit(token, code, scores) {
   var u = me_(token), c = cycle_(), e = scopedEmp_(u, code), ev = evalOf_(c.id, code), st = ev && SCORING.STATUS[ev.status] ? ev.status : 'none';
   if (!canEdit_(u, e, st)) throw new Error('แบบประเมินนี้ส่งไม่ได้ในสถานะปัจจุบัน');
-  var check = calcScore(e.fcode, attOf_(c.id, code), scores);
+  var cfg = cfgOf_(c), check = calcScore(e.fcode, attOf_(c.id, code), scores, null, cfg);
   if (!check.complete) throw new Error('ยังให้คะแนนไม่ครบ: ' + check.missing.join(', '));
-  var row = save_(u, c, e, scores, (u.role === 'div' || e.skipDiv) ? 'exec' : 'div', { return_note: '' });
+  // โควต้าเกรด 1–3: ล็อกกันส่งพร้อมกันแล้วหลุดเพดาน
+  var lock = cfg && e.form === 'new' ? LockService.getScriptLock() : null, row;
+  if (lock) lock.waitLock(20000);
+  try {
+    if (lock) {
+      var grp = quotaGroup_(u, employees_(true)), qerr = quotaError(cfg, grp.length, quotaUse_(c.id, grp, code), check.grade);
+      if (qerr) throw new Error(qerr);
+    }
+    row = save_(u, c, e, scores, (u.role === 'div' || e.skipDiv) ? 'exec' : 'div', { return_note: '' });
+  } finally { if (lock) lock.releaseLock(); }
   addHistory_(row.id, 'submit', 'ผู้ประเมินส่งแบบประเมิน', u, '');
   return getEval_(u, code);
 }
@@ -478,7 +488,7 @@ function apiSaveWeights(token, form, arr) {
   sb_('get', P + 'attendance?cycle_id=eq.' + c.id).forEach(function (a) { atts[a.emp_code] = attRow_(a); });
   var rows = sb_('get', P + 'evaluations?cycle_id=eq.' + c.id + '&form=eq.' + form + '&select=cycle_id,emp_code,form,status,scores');
   if (rows.length) {
-    rows.forEach(function (r) { var k = calcScore(r.form, atts[r.emp_code], r.scores); r.total = k.total; r.grade = k.grade; });
+    rows.forEach(function (r) { var k = calcScore(r.form, atts[r.emp_code], r.scores, null, cfgOf_(c)); r.total = k.total; r.grade = k.grade; });
     sb_('post', P + 'evaluations?on_conflict=cycle_id,emp_code', rows, 'resolution=merge-duplicates');
   }
   return weights_();
@@ -530,10 +540,64 @@ function apiAttSave(token, rows) {
   var evs = sb_('get', P + 'evaluations?cycle_id=eq.' + c.id + '&status=neq.done&emp_code=in.(' + encodeURIComponent(list) + ')&select=cycle_id,emp_code,form,status,scores');
   if (evs.length) {
     var m = {}; out.forEach(function (o) { m[o.emp_code] = attRow_(o); });
-    evs.forEach(function (r) { var k = calcScore(valid[r.emp_code] ? valid[r.emp_code].fcode : r.form, m[r.emp_code], r.scores); r.form = valid[r.emp_code] ? valid[r.emp_code].fcode : r.form; r.total = k.total; r.grade = k.grade; });
+    evs.forEach(function (r) { var k = calcScore(valid[r.emp_code] ? valid[r.emp_code].fcode : r.form, m[r.emp_code], r.scores, null, cfgOf_(c)); r.form = valid[r.emp_code] ? valid[r.emp_code].fcode : r.form; r.total = k.total; r.grade = k.grade; });
     sb_('post', P + 'evaluations?on_conflict=cycle_id,emp_code', evs, 'resolution=merge-duplicates');
   }
   return apiAttList(token);
+}
+
+// ───────── เกณฑ์เกรด 1–3 + โควต้า (grade_cfg ของรอบ) ─────────
+var QUOTA_ST = ['div', 'exec', 'ack', 'hr', 'done'];   // สถานะที่นับเป็น "ส่งแล้ว" (returned = คืนโควต้า)
+function cfgOf_(c) { try { return normGradeCfg(c && c.grade_cfg); } catch (e) { return null; } }
+// กลุ่ม = พนักงานเกรด 1–3 ในขอบเขตของผู้ส่ง ที่ active และร่วมประเมิน (ไม่รวมตัวเอง)
+function quotaGroup_(u, emps) {
+  return emps.filter(function (e) { return e.form === 'new' && e.evaluate !== false && e.active !== false && e.code !== u.emp_code && inScope_(u, e); });
+}
+function quotaUse_(cycleId, group, exceptCode) {
+  var inG = {}, o = { A: 0, B: 0, C: 0, D: 0 };
+  group.forEach(function (e) { inG[e.code] = true; });
+  sb_('get', P + 'evaluations?cycle_id=eq.' + cycleId + '&select=emp_code,status,grade').forEach(function (x) {
+    if (inG[x.emp_code] && x.emp_code !== exceptCode && QUOTA_ST.indexOf(x.status) >= 0 && o.hasOwnProperty(x.grade)) o[x.grade]++;
+  });
+  return o;
+}
+// สรุปโควต้าของผู้ใช้ (ผู้ที่ส่งแบบประเมินได้) · null = ไม่มีโควต้า
+function quotaSummary_(u, c) {
+  var cfg = cfgOf_(c);
+  if (!cfg || ['eval', 'div', 'admin'].indexOf(u.role) < 0) return null;
+  var g = quotaGroup_(u, employees_(true)); if (!g.length) return null;
+  var used = quotaUse_(c.id, g, null), caps = quotaCaps(g.length, cfg);
+  return { n: g.length, caps: caps, used: used, over: ['A', 'B', 'C'].filter(function (k) { return used[k] > caps[k]; }) };
+}
+function apiQuota(token) { return quotaSummary_(me_(token), cycle_()); }
+// เกณฑ์ล่าสุดสำหรับรอบใหม่ · undefined = ฐานข้อมูลยังไม่มีคอลัมน์ grade_cfg (ยังไม่ได้รัน SQL 92)
+function latestCfg_() {
+  try { var r = sb_('get', P + 'eval_cycles?grade_cfg=not.is.null&select=grade_cfg&order=id.desc&limit=1'); return cfgOf_(r[0]) || SCORING.DEFAULT_GRADE_CFG; }
+  catch (e) { return undefined; }
+}
+function apiGradeCfgGet(token, cycleId) {
+  var u = me_(token); requireRole_(u, ['hr']);
+  var cycles = sb_('get', P + 'eval_cycles?select=id,name,is_active,grade_cfg&order=year_be.desc,round.desc');
+  var act = cycles.filter(function (x) { return x.is_active; })[0] || cycles[0], cid = Number(cycleId) || (act && act.id);
+  var cy = cycles.filter(function (x) { return x.id === cid; })[0];
+  if (!cy) throw new Error('ไม่พบรอบการประเมิน');
+  return { cycleId: cid, activeId: act ? act.id : null, cfg: cfgOf_(cy), def: SCORING.DEFAULT_GRADE_CFG,
+    cycles: cycles.map(function (x) { return { id: x.id, name: x.name, active: !!x.is_active, hasCfg: !!x.grade_cfg }; }) };
+}
+// cfg = null → กลับไปใช้สเกลเดิม 7 ระดับ (ไม่มีโควต้า) · บันทึกแล้วคำนวณเกรดของแบบที่ยังไม่ done ใหม่
+function apiGradeCfgSave(token, cycleId, cfg) {
+  var u = me_(token); requireRole_(u, ['hr']);
+  var cid = Number(cycleId);
+  if (!sb_('get', P + 'eval_cycles?id=eq.' + cid + '&select=id').length) throw new Error('ไม่พบรอบการประเมิน');
+  var n = normGradeCfg(cfg);
+  sb_('patch', P + 'eval_cycles?id=eq.' + cid, { grade_cfg: n });
+  var atts = {}; sb_('get', P + 'attendance?cycle_id=eq.' + cid).forEach(function (a) { atts[a.emp_code] = attRow_(a); });
+  var rows = sb_('get', P + 'evaluations?cycle_id=eq.' + cid + '&status=neq.done&select=cycle_id,emp_code,form,status,scores');
+  if (rows.length) {
+    rows.forEach(function (r) { var k = calcScore(r.form, atts[r.emp_code], r.scores, null, n); r.total = k.total; r.grade = k.grade; });
+    sb_('post', P + 'evaluations?on_conflict=cycle_id,emp_code', rows, 'resolution=merge-duplicates');
+  }
+  return apiGradeCfgGet(token, cid);
 }
 
 // ───────── HR Admin / Admin: รอบการประเมิน ─────────
@@ -560,7 +624,7 @@ function apiCycleSave(token, d) {
   if (dup.length) throw new Error('มีรอบปี ' + y + ' ครั้งที่ ' + r + ' อยู่แล้ว');
   var row = { name: String(d.name || '').trim() || cycleName_(y, r), year_be: y, round: r, data_from: d.from, data_to: d.to };
   if (d.id) sb_('patch', P + 'eval_cycles?id=eq.' + Number(d.id), row);
-  else { row.is_active = false; sb_('post', P + 'eval_cycles', row); }
+  else { row.is_active = false; var lc = latestCfg_(); if (lc !== undefined) row.grade_cfg = lc; sb_('post', P + 'eval_cycles', row); }
   return apiCycleList(token);
 }
 // เปิดใช้เป็นรอบปัจจุบัน (เปิดได้ทีละ 1 รอบ)
