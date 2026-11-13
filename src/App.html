@@ -12,7 +12,7 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
     emp:  [['mine','ผลประเมินของฉัน']]
   };
   NAV.admin = [['dash','แดชบอร์ด'],['approve','รายการรออนุมัติ'],['list','พนักงาน'],['report','รายงานสรุปผล'],['weights','แบบฟอร์มประเมิน'],['staff','จัดการพนักงาน']];
-  NAV.hr.push(['cycles', 'รอบการประเมิน']); NAV.admin.push(['cycles', 'รอบการประเมิน']);
+  NAV.hr.push(['cycles', 'รอบการประเมิน'], ['grades', 'เกณฑ์เกรดและโควต้า']); NAV.admin.push(['cycles', 'รอบการประเมิน'], ['grades', 'เกณฑ์เกรดและโควต้า']);
   const APPROVE_LABEL = { div:'อนุมัติระดับฝ่าย', exec:'อนุมัติระดับบริหาร', ack:'รับทราบผล', hr:'บันทึกคะแนน' };
   if (typeof SCORING === 'undefined') { window.ppFail && window.ppFail('ไม่พบไฟล์ ScoringClient กรุณาตรวจสอบว่าสร้างไฟล์ HTML ชื่อ ScoringClient แล้ว'); return; }
   const ST = SCORING.STATUS;
@@ -47,6 +47,8 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
   const thDate = iso => fmtD(iso, '...../...../.....');
   const tenure = iso => { if (!iso) return '–'; const s = new Date(iso), n = new Date(); let y = n.getFullYear()-s.getFullYear(), m = n.getMonth()-s.getMonth(); if (n.getDate() < s.getDate()) m--; if (m < 0) { y--; m += 12; } return y + ' ปี ' + m + ' เดือน'; };
   const me = () => S.boot.me;
+  // เกณฑ์เกรด 1–3 ของรอบปัจจุบัน (null = สเกลเดิม 7 ระดับ ไม่มีโควต้า)
+  const gcfg = () => { try { return normGradeCfg(S.boot && S.boot.cycle && S.boot.cycle.grade_cfg); } catch (e) { return null; } };
   const W = form => null; // ไม่ใช้น้ำหนักแล้ว (คะแนนตามแบบฟอร์ม rev.10.11.69)
   const FN = f => formOf(f), FSHORT = f => FN(f).short, FNAME = f => f === 'new' ? 'แบบฟอร์มเดิม · ระดับ 1–3' : f === 'sup' ? 'แบบฟอร์มเดิม · ระดับ 4–5' : 'แบบประเมิน' + FN(f).name + ' (' + FN(f).short + ')';
 
@@ -67,7 +69,7 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
   let busyN = 0, toastT;
   function busy(on) { busyN += on ? 1 : -1; $('#busy').hidden = busyN <= 0; }
   // dialog แจ้ง "ระบบกำลังทำงาน" ระหว่างเปลี่ยนหน้า / โหลดข้อมูล (แสดงหลัง 150ms กันกระพริบเมื่อโหลดเร็ว)
-  const PAGE_TH = { dash:'แดชบอร์ด', list:'รายชื่อพนักงาน', eval:'แบบประเมิน', approve:'รายการรออนุมัติ', report:'รายงานสรุปผล', mine:'ผลประเมินของฉัน', weights:'แบบฟอร์มประเมิน', staff:'จัดการพนักงาน', att:'สถิติมาทำงาน', cycles:'รอบการประเมิน', help:'คู่มือการใช้งาน' };
+  const PAGE_TH = { dash:'แดชบอร์ด', list:'รายชื่อพนักงาน', eval:'แบบประเมิน', approve:'รายการรออนุมัติ', report:'รายงานสรุปผล', mine:'ผลประเมินของฉัน', weights:'แบบฟอร์มประเมิน', staff:'จัดการพนักงาน', att:'สถิติมาทำงาน', cycles:'รอบการประเมิน', grades:'เกณฑ์เกรดและโควต้า', help:'คู่มือการใช้งาน' };
   let loadN = 0, loadT;
   function loading(on, msg) {
     const el = $('#loadDlg'); if (!el) return;
@@ -192,7 +194,7 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
     sh.classList.toggle('nav-min', S.navMin);
     try { localStorage.setItem('pp_nav_min', S.navMin ? '1' : '0'); } catch (e) {}
   }
-  const NAV_IC = { dash:'M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z', approve:'M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9', list:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8', mine:'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8', report:'M3 3v18h18M7 16v-5M12 16V8M17 16v-8', forms:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5', weights:'M12 3v18M5 8h14M5 8l-3 7a4 4 0 0 0 6 0zM19 8l-3 7a4 4 0 0 0 6 0z', staff:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M22 11h-6', cycles:'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z', att:'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M12 6v6l4 2', help:'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01' };
+  const NAV_IC = { dash:'M3 13h8V3H3zM13 21h8V11h-8zM3 21h8v-6H3zM13 3v6h8V3z', approve:'M9 11l3 3 8-8M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9', list:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8', mine:'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8', report:'M3 3v18h18M7 16v-5M12 16V8M17 16v-8', forms:'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5', weights:'M12 3v18M5 8h14M5 8l-3 7a4 4 0 0 0 6 0zM19 8l-3 7a4 4 0 0 0 6 0z', staff:'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M19 8v6M22 11h-6', cycles:'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z', grades:'M12 15a6 6 0 1 0 0-12 6 6 0 0 0 0 12zM8.2 13.9L7 22l5-3 5 3-1.2-8.1', att:'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M12 6v6l4 2', help:'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01' };
   const navIc = k => `<svg class="nav-ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="${NAV_IC[k] || NAV_IC.forms}"/></svg>`;
   function nav() {
     const u = me(), inbox = S.list.filter(r => r.canAct).length;
@@ -211,6 +213,7 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
     if (view === 'mine') S.sel = await run(api('apiGetEvaluation', me().empCode));
     if (view === 'staff') S.adm = await run(api('apiAdminData'));
     if (view === 'cycles') { S.cy = await run(api('apiCycleList')); S.cyD = null; }
+    if (view === 'grades') { S.gc = await run(api('apiGradeCfgGet', S.gc ? S.gc.cycleId : null)); gcReset(); }
     if (view === 'att') { S.att = await run(api('apiAttList')); S.attD = {}; S.attMsg = null; }
     if (view === 'report' && me().role !== 'emp') { S.rp = await run(api('apiReportList', S.rp ? S.rp.cycleId : null)); S.rpHist = null; if (S.sel && !S.rp.rows.some(r => r.code === S.sel.emp.code) || S.rp.cycleId !== S.rp.activeId) S.sel = null; }
     if (view === 'report' && S.sel && !S.list.find(r => r.code === S.sel.emp.code)) S.sel = null;
@@ -221,7 +224,7 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
 
   function render() {
     nav();
-    const V = { dash: vDash, list: vList, eval: vEval, approve: vApprove, report: vReport, mine: vMine, weights: vWeights, staff: vStaff, att: vAtt, cycles: vCycles, help: vHelp }[S.view] || vList;
+    const V = { dash: vDash, list: vList, eval: vEval, approve: vApprove, report: vReport, mine: vMine, weights: vWeights, staff: vStaff, att: vAtt, cycles: vCycles, grades: vGrades, help: vHelp }[S.view] || vList;
     try { $('#main').innerHTML = V(); }
     catch (err) { console.error(err); $('#main').innerHTML = `<div class="page"><div class="card"><span class="card-title">แสดงหน้านี้ไม่สำเร็จ</span><span class="small muted">${esc(err && err.message || err)}</span><button class="btn" style="align-self:flex-start" onclick="location.reload()">โหลดหน้าใหม่</button></div></div>`; }
     document.querySelectorAll('[data-indet]').forEach(el => el.indeterminate = true);
@@ -280,7 +283,7 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
         ${kpi('ระหว่างอนุมัติ', pend.length, 'รอคุณดำเนินการ ' + L.filter(r => r.canAct).length + ' รายการ', 'blue')}
         ${kpi('คะแนนเฉลี่ย', avg(sent), 'จาก 100 คะแนน', 'green')}
       </div>
-      <div class="grid-2">${dist('new', SCORING.GR_NEW, 'การกระจายเกรด · ระดับ 1–3')}${dist('sup', SCORING.GR_SUP, 'การกระจายเกรด · ระดับ 4–5')}</div>
+      <div class="grid-2">${dist('new', gradeLevels('g1', gcfg()), 'การกระจายเกรด · ระดับ 1–3')}${dist('sup', SCORING.GR_SUP, 'การกระจายเกรด · ระดับ 4–5')}</div>
       <div class="card">${C4}<span class="card-title">ความคืบหน้ารายแผนก</span>
         <div class="scroll-x"><table class="table"><thead><tr><th>แผนก</th><th>ฝ่าย</th><th>พนักงาน</th><th>ส่งแล้ว</th><th style="min-width:140px">ความคืบหน้า</th><th>เสร็จสิ้น</th><th>คะแนนเฉลี่ย</th></tr></thead>
         <tbody>${depts.map(r => `<tr><td>${esc(r.d)}</td><td class="muted">${esc(r.div)}</td><td>${r.n}</td><td>${r.s}</td><td><div class="bar"><i style="width:${r.pct}%"></i></div></td><td>${r.done}</td><td>${r.avg}</td></tr>`).join('')}</tbody></table></div>
@@ -291,12 +294,19 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
   // ───────── list ─────────
   const GROUPS = { all: () => true, todo: s => ['none','draft','returned'].includes(s), pending: s => ['div','exec','ack','hr'].includes(s), done: s => s === 'done' };
   function actionOf(r) { return r.canEdit ? (r.status === 'none' ? 'เริ่มประเมิน' : 'แก้ไข') : r.canAct ? 'ตรวจสอบ' : 'ดู'; }
+  // แถบโควต้าเกรดของกลุ่ม (ผู้ประเมินเกรด 1–3) · D ไม่จำกัด
+  function quotaBar() {
+    const q = S.boot.quota; if (!q) return '';
+    const it = k => { const over = k !== 'D' && q.used[k] > q.caps[k]; return `<span class="q-item${over ? ' q-over' : ''}" title="${k === 'D' ? 'ไม่จำกัด' : 'ส่งแล้ว / เพดาน'}"><b>${k}</b> ${q.used[k]}${k === 'D' ? '' : '/' + q.caps[k]}</span>`; };
+    return `<div class="quota-bar"><span class="small muted">โควต้ากลุ่ม (${q.n} คน)</span>${['A', 'B', 'C', 'D'].map(it).join('')}${q.over.length ? '<span class="small q-warn">เกินโควต้า กรุณาตรวจสอบ</span>' : '<span class="small muted">นับเฉพาะที่ส่งแล้ว · เกิน = ส่งไม่ได้</span>'}</div>`;
+  }
   function vList() {
     const base = filtered(), q = S.f.q.trim();
     const rows = base.filter(r => (!q || r.name.includes(q) || r.code.includes(q)) && GROUPS[S.f.st](r.status));
     const opts = [['all','ทั้งหมด'],['todo','รอประเมิน'],['pending','ระหว่างอนุมัติ'],['done','เสร็จสิ้น']];
     return `<div class="page">
       <div><h2>${me().role === 'eval' ? 'พนักงานในความรับผิดชอบ' : 'พนักงาน'}</h2><span class="small muted">ขอบเขต: ${esc(scopeText())} · ${rows.length} รายการ</span></div>
+      ${quotaBar()}
       <div class="toolbar">
         <input class="input" style="flex:1 1 220px;max-width:320px" placeholder="ค้นหาชื่อ หรือรหัสพนักงาน" value="${esc(S.f.q)}" data-input="q">
         <div class="seg">${opts.map(([v, l]) => `<label><input type="radio" name="stf" value="${v}" data-change="st" ${S.f.st === v ? 'checked' : ''}>${l} <span style="opacity:.7">${base.filter(r => GROUPS[v](r.status)).length}</span></label>`).join('')}</div>
@@ -378,10 +388,15 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
         ${ex('นายสมชาย เกรด 1 (เต็ม 30) · ลากิจ 3 + ลาป่วย 2 = 5 วัน · มาสาย 90 นาที · ใบเตือนวาจา 1 ครั้ง', tbl(['รายการ', 'คำนวณ', 'หัก'], [['ลา 5 วัน', 'เกิน 3 วัน = 2 วัน × 1', '2'], ['มาสาย 90 นาที = 1.5 ชม.', '1.5 × 0.5', '0.75'], ['ขาดงาน 0 + ใบเตือน 1', '1 × 5', '5'], ['<b>รวมหัก</b>', '', '<b>7.75</b>']]) + '<span>คะแนนการรักษาระเบียบวินัย = 30 − 7.75 = <b>22.25</b></span>')}
         <b style="font-weight:600">3) ตัวอย่างคะแนนรวม (แบบฟอร์มเกรด 1)</b>
         ${ex('', tbl(['ข้อ', 'หัวข้อ', 'คะแนน', 'เต็ม'], F1.c.map((p, i) => [i + 1, esc(p.t), [17, 8, 8, 8, 8, 7][i], p.max]).concat([[7, 'การรักษาระเบียบวินัย', '22.25', 30], ['', '<b>รวมผลคะแนนประเมิน</b>', '<b>78.25</b>', 100]])) + '<span>78.25 อยู่ในช่วง 75 – 79.99 → <b>เกรด B (ดี)</b></span>')}`);
-    if (tab === 'grade') body = card('เกณฑ์', 'การตัดเกรดจากคะแนนรวม', `
-        <b style="font-weight:600">พนักงานเกรด 1–3 (A+ … F)</b>${tbl(['เกรด', 'ระดับ', 'คะแนนรวม', 'ความหมาย'], SCORING.GR_NEW.map(g => ['<b>' + g[0] + '</b>', g[1], g[2], '<span class="small">' + esc(g[3] || '') + '</span>']))}
+    if (tab === 'grade') {
+      const gc = gcfg(), GN = gradeLevels('g1', gc), qc = gc && quotaCaps(10, gc);
+      body = card('เกณฑ์', 'การตัดเกรดจากคะแนนรวม', `
+        <b style="font-weight:600">พนักงานเกรด 1–3 (${GN.map(g => g[0]).join(', ')})</b>${tbl(['เกรด', 'ระดับ', 'คะแนนรวม', 'ความหมาย'], GN.map(g => ['<b>' + esc(g[0]) + '</b>', esc(g[1]), g[2], '<span class="small">' + esc(g[3] || '') + '</span>']))}
         <b style="font-weight:600">พนักงานเกรด 4–5 (5 … 1)</b>${tbl(['เกรด', 'ระดับ', 'คะแนนรวม', 'ความหมาย'], SCORING.GR_SUP.map(g => ['<b>' + g[0] + '</b>', g[1], g[2], '<span class="small">' + esc(g[3] || '') + '</span>']))}
-        ${ex('', '<span>คะแนนรวม 86.5 (เกรด 2) → อยู่ในช่วง 85 – 94.99 → <b>A ดีมาก</b></span><span>คะแนนรวม 86.5 (เกรด 4) → อยู่ในช่วง 85 – 89.99 → <b>4</b></span><span>คะแนนรวม 94.99 → A (ยังไม่ถึง 95 จึงไม่ใช่ A+) · ระบบปัดทศนิยม 2 ตำแหน่งก่อนตัดเกรด</span>')}`);
+        ${gc ? `<b style="font-weight:600">โควต้าเกรด (เกรด 1–3)</b>${tbl(['เกรด', 'สัดส่วนสูงสุดของกลุ่ม', 'ตัวอย่าง กลุ่ม 10 คน'], [['A', gc.quota.A + '%', qc.A + ' คน'], ['B', gc.quota.B + '%', qc.B + ' คน'], ['C', gc.quota.C + '%', qc.C + ' คน'], ['D', 'ไม่จำกัด', '–']])}
+        <span class="small muted">กลุ่ม = พนักงานเกรด 1–3 ในหน่วยงานที่ผู้ประเมินรับผิดชอบ · ปัดเศษ ≥ .5 ขึ้น · โควต้าแต่ละเกรดแยกกัน ไม่ยกให้เกรดอื่น · นับเฉพาะแบบที่ส่งแล้ว (ส่งกลับแก้ไข = คืนโควต้า) · ถ้าเกินจะส่งไม่ได้ ต้องปรับคะแนนก่อน</span>` : ''}
+        ${ex('', gc ? `<span>คะแนนรวม ${gc.levels[0].min} ขึ้นไป (เกรด 2) → <b>${esc(gc.levels[0].g)} ${esc(gc.levels[0].label)}</b> · คะแนนรวม 86.5 (เกรด 4) → อยู่ในช่วง 85 – 89.99 → <b>4</b></span><span>กลุ่ม 10 คน ได้ A แล้ว ${qc.A} คน → คนถัดไปที่ได้ A ส่งไม่ได้จนกว่าจะปรับคะแนน · ระบบปัดทศนิยม 2 ตำแหน่งก่อนตัดเกรด</span>` : '<span>คะแนนรวม 86.5 (เกรด 2) → อยู่ในช่วง 85 – 94.99 → <b>A ดีมาก</b></span><span>คะแนนรวม 86.5 (เกรด 4) → อยู่ในช่วง 85 – 89.99 → <b>4</b></span><span>คะแนนรวม 94.99 → A (ยังไม่ถึง 95 จึงไม่ใช่ A+) · ระบบปัดทศนิยม 2 ตำแหน่งก่อนตัดเกรด</span>')}`);
+    }
     if (tab === 'emp') body = card('พนักงาน', 'การเข้าใช้งานสำหรับพนักงาน', `
         ${steps(['หน้าเข้าสู่ระบบ เลือกแท็บ "พนักงาน" ใส่ <b>รหัสพนักงาน</b> แล้วกด ถัดไป', 'ตอบคำถามยืนยันตัวตนที่ระบบสุ่ม เช่น <b>4 ตัวท้ายเลขบัตรประชาชน</b>, วันเกิด (dd/MM/yyyy พ.ศ.) หรือ 4 ตัวท้ายเบอร์โทร', 'ตอบผิดเกิน 3 ครั้ง บัญชีจะถูกล็อก ติดต่อ HR เพื่อปลดล็อก', 'เมนู ผลประเมินของฉัน: ดูคะแนน เกรด Timeline ผลประเมินฉบับก่อนหน้า และเอกสารแนบ', 'เมื่อผลผ่านการอนุมัติระดับบริหารแล้ว กด <b>รับทราบผล</b>'])}
         ${ex('', '<span>รหัสพนักงาน 65001 → คำถาม "4 ตัวท้ายเลขบัตรประชาชน" → ใส่ 1234 → เข้าสู่ระบบ</span>')}
@@ -410,7 +425,7 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
     return [['รหัสพนักงาน', e.code], ['ตำแหน่ง', e.pos], ['ระดับพนักงาน', 'เกรด ' + e.level], ['แบบฟอร์ม', FSHORT(e.fcode)], ['หน่วย/แผนก', e.dept], ['ฝ่าย', e.div || '–'], ['สถานที่ทำงาน', e.site || 'THAN'], ['ประเภทการจ้าง', e.type || '–'], ['วันที่เริ่มงาน', thDate(e.start)], ['อายุการทำงาน', tenure(e.start)]];
   }
   function summaryHTML() {
-    const sel = S.sel, e = sel.emp, c = calcScore(e.fcode, sel.att, sel.scores), act = sel.canAct;
+    const sel = S.sel, e = sel.emp, c = calcScore(e.fcode, sel.att, sel.scores, null, gcfg()), act = sel.canAct;
     return `<div class="card">${C4}
       <span class="kicker">ผลการประเมิน</span>
       <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px">
@@ -431,7 +446,8 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
   function vEval() {
     const sel = S.sel; if (!sel) return '<p class="empty">เลือกพนักงานจากรายชื่อ</p>';
     const e = sel.emp, sc = sel.scores, Wf = W(e.form), lock = !sel.canEdit, dis = lock ? 'disabled' : '';
-    const c = calcScore(e.form, sel.att, sc, Wf), attPart = c.parts.find(p => p.att);
+    const c = calcScore(e.form, sel.att, sc, Wf, gcfg()), attPart = c.parts.find(p => p.att);
+    const G = gradeLevels(e.fcode || e.form, gcfg());
     const lockedMsg = sel.canEdit ? '' : sel.canAct ? 'แบบประเมินนี้รอการดำเนินการจากคุณ · ตรวจสอบแล้วกดปุ่มในแผงผลการประเมิน' : 'สถานะ: ' + ST[sel.status][0] + ' · ดูได้อย่างเดียว';
     const F = FN(e.fcode); normScores(sc);
     const parts = F.c.map((p, i) => {
@@ -570,7 +586,7 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
     let body = emp ? '<p class="empty">เลือกพนักงานเพื่อดูรายงาน</p>' : '';
     if (S.rpHist) body = histReport(S.rpHist);
     else if (sel && !sel.hidden) {
-      const e = sel.emp, sc = sel.scores, c = calcScore(e.fcode, sel.att, sc);
+      const e = sel.emp, sc = sel.scores, c = calcScore(e.fcode, sel.att, sc, null, gcfg());
       const list = (a) => a.length ? a.map(t => `<div>· ${esc(t)}</div>`).join('') : '<div class="muted">—</div>';
       body = `<article class="report">
         <div class="rhead"><div><div style="font-family:var(--fh);font-size:24px">แบบประเมินผลการปฏิบัติงานประจำปี ${S.boot.cycle.year_be}</div><div class="small" style="letter-spacing:.08em">EVALUATION FORM FOR THE YEAR ${S.boot.cycle.year_be - 543} · ครั้งที่ ${S.boot.cycle.round}</div></div>
@@ -614,7 +630,7 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
     if (sel.closed) top = `<div class="card">${C4}<span class="card-title">ยังไม่เปิดให้ดูผลการประเมิน</span><span class="muted small">ฝ่ายบุคคลจะเปิดให้ดูผลประเมินเมื่อพร้อม กรุณาตรวจสอบอีกครั้งภายหลัง</span></div>`;
     else if (!shown) top = `<div class="card">${C4}<span class="card-title">อยู่ระหว่างการประเมิน · ${ST[sel.status][0]}</span><span class="muted small">คุณจะเห็นคะแนนและเกรดเมื่อแบบประเมินผ่านการอนุมัติระดับบริหารแล้ว</span></div>`;
     else {
-      const c = calcScore(sel.emp.fcode, sel.att, sel.scores);
+      const c = calcScore(sel.emp.fcode, sel.att, sel.scores, null, gcfg());
       top = `<div class="card" style="gap:16px">${C4}
         <div style="display:flex;gap:28px;align-items:flex-end;flex-wrap:wrap"><div><span class="kicker">คะแนนรวม</span><div class="big" style="font-size:64px">${fmt(c.total)}</div></div><div><span class="kicker">เกรด</span><div class="grade" style="font-size:64px">${esc(c.grade)}</div></div><span style="font-size:18px;padding-bottom:8px">${esc(c.label)}</span></div>
         <table class="table" style="font-size:13px"><tbody>${c.parts.map(p => `<tr><td>${p.no}. ${esc(p.title)}</td><td class="right nowrap">${fmt(p.weighted)} / ${p.weight}</td></tr>`).join('')}</tbody></table>
@@ -704,12 +720,47 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
       <span class="small muted">เปลี่ยนรอบปัจจุบันแล้ว แบบประเมินของรอบเดิมยังอยู่ครบ ดูย้อนหลังได้ที่รายงานสรุปผลและโปรไฟล์พนักงาน · ลบได้เฉพาะรอบที่ยังไม่มีแบบประเมิน</span>
     </div>`;
   }
+  // ───────── เกณฑ์เกรดและโควต้า (HR / Admin) ─────────
+  function gcReset() { S.gcErr = ''; S.gcD = JSON.parse(JSON.stringify(S.gc.cfg || S.gc.def)); }
+  // ช่วงคะแนน + ตัวอย่างเพดาน จากค่าที่กำลังแก้ (อัปเดตทันทีขณะพิมพ์ โดยไม่ render ใหม่)
+  function gcPreview() {
+    let ok = null; try { ok = normGradeCfg(S.gcD); } catch (e) {}
+    return { rng: ok ? gradeLevels('g1', ok).map(g => g[2]) : ['', '', '', ''],
+      ex: ok ? `<div class="scroll-x"><table class="table"><thead><tr><th>ขนาดกลุ่ม</th><th>A</th><th>B</th><th>C</th><th>D</th></tr></thead><tbody>${[1, 3, 5, 10, 20].map(n => { const c = quotaCaps(n, ok); return `<tr><td>${n} คน</td><td>A ${c.A}</td><td>B ${c.B}</td><td>C ${c.C}</td><td class="muted">D ไม่จำกัด</td></tr>`; }).join('')}</tbody></table></div>` : '<span class="small muted">กรอกค่าให้ถูกต้องเพื่อดูตัวอย่าง</span>' };
+  }
+  function vGrades() {
+    const G = S.gc, d = S.gcD, cy = G.cycles.find(x => x.id === G.cycleId) || {};
+    const P = gcPreview();
+    const inp = (k, f, v, a) => `<input class="input" data-gc="${k}.${f}" value="${esc(v)}" ${a || ''}>`;
+    const rows = d.levels.map((x, i) => `<tr><td style="font-family:var(--fh);font-size:20px;font-weight:600">${x.g}</td>
+      <td style="width:140px">${x.g === 'D' ? '<span class="muted">0 (ต่ำกว่า C)</span>' : inp(x.g, 'min', x.min, 'type="number" min="0" max="100" step="0.01" inputmode="decimal"')}</td>
+      <td class="muted nowrap" data-gcr="${i}">${esc(P.rng[i])}</td>
+      <td style="min-width:160px">${inp(x.g, 'label', x.label, 'maxlength="40"')}</td>
+      <td style="width:130px">${x.g === 'D' ? '<span class="tag tag-neutral">ไม่จำกัด</span>' : `<div style="display:flex;align-items:center;gap:6px">${inp(x.g, 'q', d.quota[x.g], 'type="number" min="0" max="100" step="1" inputmode="numeric"')}<span class="muted">%</span></div>`}</td></tr>`).join('');
+    return `<div class="page" style="max-width:1100px">
+      <div class="page-head"><div><h2>เกณฑ์เกรดและโควต้า</h2><span class="small muted">ใช้กับพนักงานเกรด 1–3 · เกรด 4–5 (หัวหน้า) ใช้สเกล 5…1 เดิม ไม่มีโควต้า</span></div>
+        <div class="field" style="min-width:240px"><label>รอบการประเมิน</label><select class="input" data-gc-cycle>${G.cycles.map(x => `<option value="${x.id}" ${x.id === G.cycleId ? 'selected' : ''}>${esc(x.name)}${x.active ? ' (รอบปัจจุบัน)' : ''}${x.hasCfg ? '' : ' · สเกลเดิม'}</option>`).join('')}</select></div></div>
+      ${G.cfg ? '' : `<div class="card" style="gap:4px">${C4}<span class="kicker" style="color:var(--warn)">รอบนี้ใช้สเกลเดิม 7 ระดับ (A+ … F) ไม่มีโควต้า</span><span class="small muted">ด้านล่างเป็นค่าเริ่มต้น กดบันทึกเพื่อเปลี่ยน "${esc(cy.name || '')}" มาใช้เกณฑ์ A–D และโควต้า</span></div>`}
+      <div class="card" style="padding:0;gap:0;overflow:hidden">${C4}<div class="scroll-x"><table class="table"><thead><tr><th>เกรด</th><th>คะแนนขั้นต่ำ</th><th>ช่วงคะแนน</th><th>ชื่อระดับ</th><th>โควต้าสูงสุด</th></tr></thead><tbody>${rows}</tbody></table></div></div>
+      ${S.gcErr ? `<span class="small" style="color:var(--warn)">${esc(S.gcErr)}</span>` : ''}
+      <div class="toolbar"><button class="btn btn-primary" data-act="gcSave">${C4}บันทึก</button><button class="btn" data-act="gcDefault">ใช้ค่าเริ่มต้น</button><button class="btn btn-ghost" data-act="gcReset">ยกเลิกการแก้ไข</button>${G.cfg ? '<button class="btn btn-ghost" data-act="gcLegacy">ใช้สเกลเดิม 7 ระดับ</button>' : ''}</div>
+      <div class="card" style="gap:10px">${C4}<span class="card-title">ตัวอย่างจำนวนคนสูงสุดต่อเกรด</span>
+        <div id="gcEx">${P.ex}</div>
+        <span class="small muted">กลุ่ม = พนักงานเกรด 1–3 ในหน่วยงานที่ผู้ประเมินรับผิดชอบ · จำนวนคน × % ปัดเศษ (≥ .5 ปัดขึ้น) · โควต้าแต่ละเกรดแยกกัน ที่เหลือไม่ยกให้เกรดอื่น · ส่งเกินโควต้าไม่ได้ ต้องปรับคะแนนก่อน · บันทึกแล้วระบบคำนวณเกรดของแบบประเมินที่ยังไม่เสร็จสิ้นในรอบนี้ใหม่</span></div>
+    </div>`;
+  }
+  async function gcSaved(cfg, msg) {
+    try { S.gc = await run(api('apiGradeCfgSave', S.gc.cycleId, cfg), msg); }
+    catch (err) { S.gcErr = (err && err.message) || String(err); return rerender(); }
+    if (S.gc.cycleId === S.gc.activeId) { S.boot.cycle.grade_cfg = S.gc.cfg; S.boot.quota = await api('apiQuota').catch(() => null); S.list = []; }
+    gcReset(); rerender();
+  }
   async function cycleSwitched() { S.boot = await run(api('apiBootstrap')); S.list = []; S.sel = null; S.rp = null; shell(); await go('cycles'); }
 
   // ───────── สถิติมาทำงาน ─────────
   const ATT_K = ['late', 'sick', 'personal', 'absent', 'verbal', 'written'];
   function attCalc(r) {
-    const a = Object.assign({}, r.att, S.attD[r.code] || {}), c = calcScore(r.fcode || r.form, a, {}), p = c.parts.find(x => x.att);
+    const a = Object.assign({}, r.att, S.attD[r.code] || {}), c = calcScore(r.fcode || r.form, a, {}, null, gcfg()), p = c.parts.find(x => x.att);
     return { a, raw: c.attRaw, max: c.attMax, ded: p.ded, rows: c.rows };
   }
   function attRowCells(r) {
@@ -926,9 +977,10 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
     if (a === 'tog') return mutate(sc => { const l = (d.key === 'strengths' ? SCORING.STR : SCORING.IMP)[+d.i]; sc[d.key] = sc[d.key].includes(l) ? sc[d.key].filter(x => x !== l) : sc[d.key].concat([l]); });
     if (a === 'draft') { S.sel = await run(api('apiSaveDraft', S.sel.emp.code, S.sel.scores), 'บันทึกร่างแล้ว'); return render(); }
     if (a === 'submit') {
-      const c = calcScore(S.sel.emp.form, S.sel.att, S.sel.scores, W(S.sel.emp.form));
+      const c = calcScore(S.sel.emp.form, S.sel.att, S.sel.scores, W(S.sel.emp.form), gcfg());
       if (!c.complete) { S.errors = c.missing; return refreshSummary(); }
       S.sel = await run(api('apiSubmit', S.sel.emp.code, S.sel.scores), 'ส่งแบบประเมินของ ' + S.sel.emp.name + ' แล้ว');
+      S.boot.quota = await api('apiQuota').catch(() => S.boot.quota);
       S.list = await run(api('apiListEmployees')); return render();
     }
     if (a === 'approve') { const lbl = APPROVE_LABEL[S.sel.status]; S.sel = await run(api('apiApprove', S.sel.emp.code), lbl + 'แล้ว'); S.list = await run(api('apiListEmployees')); return render(); }
@@ -939,6 +991,10 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
     if (a === 'rpOpen') return openReport(d.code);
     if (a === 'fvOpen') { S.fv = d.k; render(); window.scrollTo(0, 0); return; }
     if (a === 'fvBack') { S.fv = null; render(); window.scrollTo(0, 0); return; }
+    if (a === 'gcSave') { let cfg; try { cfg = normGradeCfg(S.gcD); } catch (err) { S.gcErr = err.message; return rerender(); } return gcSaved(cfg, 'บันทึกเกณฑ์เกรดแล้ว'); }
+    if (a === 'gcDefault') { S.gcErr = ''; S.gcD = JSON.parse(JSON.stringify(S.gc.def)); return rerender(); }
+    if (a === 'gcReset') { gcReset(); return rerender(); }
+    if (a === 'gcLegacy') { if (!confirm('ให้รอบนี้กลับไปใช้สเกลเดิม 7 ระดับ (A+ … F) และยกเลิกโควต้า?')) return; return gcSaved(null, 'เปลี่ยนเป็นสเกลเดิมแล้ว'); }
     if (a === 'cyNew') { const y = new Date().getFullYear() + 543; S.cyErr = ''; S.cyD = { year: y, round: 1, from: '', to: '', name: '' }; return rerender(); }
     if (a === 'cyEdit') { const x = S.cy.find(z => z.id === Number(d.id)); S.cyErr = ''; S.cyD = { id: x.id, year: x.year, round: x.round, from: x.from || '', to: x.to || '', name: x.name }; return rerender(); }
     if (a === 'cyCancel') { S.cyD = null; return rerender(); }
@@ -985,6 +1041,8 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
     if (t.dataset.input === 'q') { S.f.q = t.value; const pos = t.selectionStart; render(); const n = $('[data-input="q"]'); n.focus(); n.setSelectionRange(pos, pos); return; }
     if (t.dataset.bind) { const [k, i] = t.dataset.bind.split('.'); S.sel.scores[k][+i] = t.value; return; }
     if (t.dataset.w) { const [f, i] = t.dataset.w.split('.'); S.wDraft[f][+i] = Number(t.value) || 0; const sum = S.wDraft[f].reduce((a, b) => a + b, 0); $('#sum-' + f).textContent = sum + '%'; $('#saveW-' + f).disabled = sum !== 100; $('#msg-' + f).textContent = sum === 100 ? '' : 'รวมต้องเท่ากับ 100%'; return; }
+    if (t.dataset.gc) { const [g, f] = t.dataset.gc.split('.'), L = S.gcD.levels.find(x => x.g === g); if (f === 'q') S.gcD.quota[g] = t.value; else L[f] = t.value; S.gcErr = '';
+      const P = gcPreview(); P.rng.forEach((r, i) => { const c = $('[data-gcr="' + i + '"]'); if (c) c.textContent = r; }); const x = $('#gcEx'); if (x) x.innerHTML = P.ex; return; }
     if (t.dataset.cy) { S.cyD[t.dataset.cy] = t.dataset.date ? (parseD(t.value) ?? t.value) : t.value; if (t.dataset.date) t.style.borderColor = parseD(t.value) === null ? 'var(--warn)' : ''; return; }
     if (t.dataset.att) {
       const [code, k] = t.dataset.att.split('|'), r = S.att.rows.find(x => x.code === code), v = Math.max(0, Number(t.value) || 0);
@@ -1007,6 +1065,7 @@ window.ppStep && window.ppStep('ขั้นที่ 4/4 · เริ่มร�
   }
   async function onChange(e) {
     const t = e.target, c = t.dataset.change;
+    if ('gcCycle' in t.dataset) { S.gc = await run(api('apiGradeCfgGet', Number(t.value))); gcReset(); return rerender(); }
     if (t.dataset.chipdiv) {
       const k = t.dataset.chipdiv, tgt = k === 'f' ? S.f.depts : k === 'mg' ? S.mg.depts : S.mg.d.scopeValues;
       t.closest('.ug').querySelectorAll('[data-chip]').forEach(cb => { const i = tgt.indexOf(cb.value); if (t.checked && i < 0) tgt.push(cb.value); if (!t.checked && i >= 0) tgt.splice(i, 1); });
