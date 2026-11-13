@@ -14,6 +14,8 @@ var SCORING = {
   ],
   GR_NEW: [['A+','ดีเยี่ยม','≥ 95','ประสิทธิภาพ ≥95% สามารถทำงานที่ได้รับมอบหมายอย่างดีมาก ออกแบบลักษณะงานได้เองอย่างดี, พัฒนาตนเองและผู้อื่นได้อย่างดีเยี่ยม, ผลงาน-ผลการกระทำดีเลิศกว่าเป้าหมายที่กำหนด'],['A','ดีมาก','85 – 94.99','ประสิทธิภาพ ≥85% สามารถทำงานที่ได้รับมอบหมายอย่างดีมาก ออกแบบลักษณะงานได้เองอย่างดี, พัฒนาตนเองและผู้อื่นได้, ผลงาน-ผลการกระทำดีเกินเป้าหมายที่กำหนด'],['B+','ดีปานกลาง','80 – 84.99','ประสิทธิภาพ ≥80%, สามารถทำงานที่ได้รับมอบหมายเป็นอย่างดี โดยออกแบบลักษณะงานเองเบื้องต้นได้ มีความสนใจและการพัฒนาตัวเองเป็นอย่างดี ผลงานได้ตามเป้าหมายที่กำหนด'],['B','ดี','75 – 79.99','ประสิทธิภาพ ≥75% สามารถทำงานที่ได้รับมอบหมายเป็นอย่างดี สามารถพัฒนาได้ และมีส่วนร่วมในงานพัฒนาด้านต่าง ๆ'],['C','พอใช้','70 – 74.99','ประสิทธิภาพ ≥70% สามารถทำงานตามที่ได้รับมอบหมาย ไม่มีส่วนร่วมในงานพัฒนาด้านต่าง ๆ'],['D','ต่ำกว่ามาตรฐาน','60 – 69.99','ประสิทธิภาพค่อนข้างต่ำ < 70% หรือต้องใช้คำสั่งหรือการควบคุมติดตามอย่างใกล้ชิด/เคยได้รับการแนะนำตักเตือนแล้ว/มีการปรับปรุงพัฒนาเล็กน้อย'],['F','ควรปรับปรุง','< 60','ประสิทธิภาพต่ำ, ≤60 ไม่มีส่วนร่วม-ต่อต้าน-หลีกหนีกิจกรรมต่าง ๆ ของหน่วยงาน/เคยได้รับการว่ากล่าวตักเตือนแล้ว/ไม่มีการปรับปรุงพัฒนา']],
   GR_SUP: [['5','ดีเยี่ยม','≥ 90','ประสิทธิภาพ ≥90% ขึ้นไป, มีความสนใจและการพัฒนาอย่างดีมาก, ผลงาน-ผลการกระทำดีเลิศกว่าเป้าหมายที่กำหนด'],['4','ดี','85 – 89.99','ประสิทธิภาพ ≥85%, มีความสนใจและการพัฒนาเป็นอย่างดี, ผลงานดีและเป็นไปตามเป้าหมายที่กำหนดไว้'],['3','ปานกลาง','75 – 84.99','ประสิทธิภาพ ≥75%มีความสนใจและการพัฒนาตามหน้าที่ที่ตนเองได้รับมอบหมาย หรือเฉพาะกิจกรรมที่ตนเองสนใจ'],['2','ต่ำกว่ามาตรฐาน','60.01 – 74.99','ประสิทธิภาพค่อนข้างต่ำ ≤ 74% หรือต้องใช้คำสั่งหรือการควบคุมติดตามอย่างใกล้ชิด/เคยได้รับการแนะนำตักเตือนแล้ว/มีการปรับปรุงพัฒนาเล็กน้อย'],['1','ควรปรับปรุง','≤ 60','ประสิทธิภาพต่ำ, ≤60 ไม่มีส่วนร่วม-ต่อต้าน-หลีกหนีกิจกรรมต่าง ๆ ของหน่วยงาน/เคยได้รับการว่ากล่าวตักเตือนแล้ว/ไม่มีการปรับปรุงพัฒนา']],
+  // เกณฑ์เกรด 1–3 เริ่มต้นของรอบการประเมิน (eval_cycles.grade_cfg) · โควต้า % ต่อกลุ่มผู้ประเมิน (D ไม่จำกัด)
+  DEFAULT_GRADE_CFG: { levels: [{ g:'A', min:85, label:'ดีเยี่ยม' }, { g:'B', min:75, label:'ดี' }, { g:'C', min:70, label:'พอใช้' }, { g:'D', min:0, label:'ต้องปรับปรุง' }], quota: { A:20, B:50, C:30 } },
   STATUS: { none:['ยังไม่ประเมิน','tag-neutral'], draft:['ร่าง','tag-outline'], returned:['ส่งกลับแก้ไข','tag-outline'], div:['รออนุมัติระดับฝ่าย','tag-accent'], exec:['รออนุมัติระดับบริหาร','tag-accent'], ack:['รอพนักงานรับทราบ','tag-accent'], hr:['รอฝ่ายบุคคลบันทึก','tag-accent'], done:['เสร็จสิ้น','tag-neutral'] },
   STEPS: [['submit','ผู้ประเมินส่งแบบประเมิน'],['div','อนุมัติระดับฝ่าย'],['exec','อนุมัติระดับบริหาร'],['ack','พนักงานรับทราบ'],['hr','ฝ่ายบุคคลบันทึกคะแนน']],
   NEXT: { div:'exec', exec:'ack', ack:'hr', hr:'done' }
@@ -36,6 +38,67 @@ function formOf(f) { return SCORING.FORMS[f] || SCORING.FORMS[f === 'sup' ? 'g45
 function formKey(f) { return SCORING.FORMS[f] ? f : (f === 'sup' ? 'g45' : 'g1'); }
 function gradeScale(f) { return formOf(f).grade === '4–5' ? SCORING.GR_SUP : SCORING.GR_NEW; }
 
+// ───────── เกณฑ์เกรด 1–3 ตามรอบ (grade_cfg) + โควต้า ─────────
+// ตรวจ/ทำความสะอาด grade_cfg · null = ใช้สเกลเดิม · ไม่ถูกต้อง → throw
+function normGradeCfg(cfg) {
+  if (cfg == null) return null;
+  var L = cfg.levels, q = cfg.quota || {}, keys = ['A', 'B', 'C', 'D'];
+  if (!Array.isArray(L) || L.length !== 4) throw new Error('เกณฑ์เกรดต้องมี 4 ระดับ A, B, C, D');
+  var levels = keys.map(function (k, i) {
+    var x = L[i] || {}, min = k === 'D' ? 0 : Number(x.min), label = String(x.label == null ? '' : x.label).trim();
+    if (x.g !== k) throw new Error('ลำดับเกรดต้องเป็น A, B, C, D');
+    if (x.min === '' || x.min == null && k !== 'D' || !isFinite(min) || min < 0 || min > 100) throw new Error('คะแนนขั้นต่ำของเกรด ' + k + ' ต้องเป็นตัวเลข 0–100');
+    if (!label || label.length > 40) throw new Error('กรุณาใส่ชื่อระดับของเกรด ' + k + ' (ไม่เกิน 40 ตัวอักษร)');
+    return { g: k, min: Math.round(min * 100) / 100, label: label };
+  });
+  for (var i = 1; i < 4; i++) if (!(levels[i - 1].min > levels[i].min)) throw new Error('คะแนนขั้นต่ำของเกรด ' + levels[i - 1].g + ' ต้องมากกว่าเกรด ' + levels[i].g);
+  var quota = {};
+  ['A', 'B', 'C'].forEach(function (k) {
+    var v = Number(q[k]);
+    if (q[k] === '' || q[k] == null || !isFinite(v) || v < 0 || v > 100) throw new Error('โควต้าเกรด ' + k + ' ต้องเป็น 0–100%');
+    quota[k] = v;
+  });
+  return { levels: levels, quota: quota };
+}
+function fmt2_(n) { return String(Math.round(n * 100) / 100); }
+// ตารางเกรดในรูปแบบเดียวกับ GR_NEW: [เกรด, ระดับ, ช่วงคะแนน, ความหมาย]
+function gradeLevels(form, cfg) {
+  if (formOf(form).grade === '4–5') return SCORING.GR_SUP;
+  if (!cfg) return SCORING.GR_NEW;
+  var L = cfg.levels;
+  return L.map(function (x, i) {
+    var range = i === 0 ? '≥ ' + fmt2_(x.min) : i === L.length - 1 ? '< ' + fmt2_(L[i - 1].min) : fmt2_(x.min) + ' – ' + fmt2_(L[i - 1].min - 0.01);
+    return [x.g, x.label, range, ''];
+  });
+}
+// เกรดจากคะแนนรวม → [เกรด, ระดับ, ...]
+function gradeOf(total, form, cfg) {
+  if (formOf(form).grade === '4–5') { var S = SCORING.GR_SUP; return S[total >= 90 ? 0 : total >= 85 ? 1 : total >= 75 ? 2 : total <= 60 ? 4 : 3]; }
+  if (!cfg) { var N = SCORING.GR_NEW; return N[total >= 95 ? 0 : total >= 85 ? 1 : total >= 80 ? 2 : total >= 75 ? 3 : total >= 70 ? 4 : total >= 60 ? 5 : 6]; }
+  var G = gradeLevels(form, cfg);
+  for (var i = 0; i < cfg.levels.length; i++) if (total >= cfg.levels[i].min) return G[i];
+  return G[G.length - 1];
+}
+// ข้อมูลของเกรดที่บันทึกไว้ (หาในเกณฑ์ของรอบก่อน แล้วสเกลเดิม เผื่อข้อมูลนำเข้า)
+function gradeInfo(form, cfg, grade) {
+  var lists = [gradeLevels(form, cfg), SCORING.GR_NEW, SCORING.GR_SUP];
+  for (var i = 0; i < lists.length; i++) { var g = lists[i].filter(function (x) { return x[0] === grade; })[0]; if (g) return g; }
+  return null;
+}
+// เพดานจำนวนคนต่อเกรด (เศษ ≥ .5 ปัดขึ้น) · D ไม่จำกัด
+function quotaCaps(n, cfg) {
+  if (!cfg) return null;
+  var o = {}; ['A', 'B', 'C'].forEach(function (k) { o[k] = Math.floor(n * Number(cfg.quota[k] || 0) / 100 + 0.5); }); return o;
+}
+// used = จำนวนที่ส่งแล้วต่อเกรด (ไม่รวมคนที่กำลังส่ง) → ข้อความผิดพลาด หรือ null ถ้าส่งได้
+function quotaError(cfg, n, used, grade) {
+  var caps = quotaCaps(n, cfg);
+  if (!caps || !(grade in caps)) return null;
+  var u = Number((used || {})[grade] || 0);
+  if (u + 1 <= caps[grade]) return null;
+  return 'เกรด ' + grade + ' เกินโควต้าของกลุ่ม (ใช้แล้ว ' + u + ' จาก ' + caps[grade] + ' คน · กลุ่ม ' + n + ' คน) กรุณาปรับคะแนนก่อนส่ง';
+}
+
 function blankScores() {
   return { lv:[null,null,null,null,null,null,null,null], sc:[null,null,null,null,null,null,null,null], reasons:['','','','','','','',''], courses:['',''], comments:['',''] };
 }
@@ -57,8 +120,8 @@ function discRows(att) {
   ];
 }
 
-// W (น้ำหนัก) ไม่ใช้แล้ว — คงพารามิเตอร์ไว้เพื่อความเข้ากันได้
-function calcScore(form, att, sc, W) {
+// W (น้ำหนัก) ไม่ใช้แล้ว — คงพารามิเตอร์ไว้เพื่อความเข้ากันได้ · cfg = grade_cfg ของรอบ (ไม่ส่ง = สเกลเดิม)
+function calcScore(form, att, sc, W, cfg) {
   var F = formOf(form); sc = normScores(sc);
   var parts = F.c.map(function (p, i) {
     var raw = sc.sc[i], o = sc.lv[i] != null ? p.o[sc.lv[i]] : null;
@@ -70,10 +133,8 @@ function calcScore(form, att, sc, W) {
   parts.push({ no:F.c.length + 1, title:'การรักษาระเบียบวินัย พิจารณาจากสถิติมาทำงาน', short:'การรักษาระเบียบวินัย', weight:F.disc, max:F.disc, raw:attRaw, done:true, weighted:attRaw, att:true, ded:ded });
   var full = parts.reduce(function (s, p) { return s + p.max; }, 0);
   var total = Math.round(parts.reduce(function (s, p) { return s + p.weighted; }, 0) * 100) / 100;
-  var G = gradeScale(form), g;
-  if (G === SCORING.GR_NEW) g = total >= 95 ? 0 : total >= 85 ? 1 : total >= 80 ? 2 : total >= 75 ? 3 : total >= 70 ? 4 : total >= 60 ? 5 : 6;
-  else g = total >= 90 ? 0 : total >= 85 ? 1 : total >= 75 ? 2 : total <= 60 ? 4 : 3;
-  return { form:formKey(form), parts:parts, rows:rows, attRaw:attRaw, attMax:F.disc, full:full, total:total, grade:G[g][0], label:G[g][1],
+  var G = gradeOf(total, form, cfg);
+  return { form:formKey(form), parts:parts, rows:rows, attRaw:attRaw, attMax:F.disc, full:full, total:total, grade:G[0], label:G[1],
     complete: parts.every(function (p) { return p.done; }),
     missing: parts.filter(function (p) { return !p.done; }).map(function (p) { return 'ข้อ ' + p.no + ' ' + p.short; }) };
 }
