@@ -61,6 +61,13 @@ assert.throws(bad(c => c.levels[0].min = 'x'));
 assert.throws(bad(c => c.levels.pop()));
 assert.strictEqual(ctx.normGradeCfg({ levels: [{ g: 'A', min: '90', label: 'x' }, { g: 'B', min: 80, label: 'y' }, { g: 'C', min: 60, label: 'z' }, { g: 'D', min: 0, label: 'w' }], quota: { A: '10', B: 40, C: 50 } }).levels[0].min, 90);
 
+// 6.1) แบบฟอร์มทุกแบบเต็ม 100 · ธุรการ/เจ้าหน้าที่ตามไฟล์ formEdit2Oper.xlsx
+Object.keys(S.FORMS).forEach(k => { const F = S.FORMS[k]; assert.strictEqual(F.c.reduce((a, p) => a + p.max, 0) + F.disc, 100, k + ' ไม่เต็ม 100'); });
+const rng = p => p.o.map(o => o[1] + '-' + o[2]).join(',');
+assert.strictEqual(S.FORMS.g2_adm.c[3].max, 15); assert.strictEqual(rng(S.FORMS.g2_adm.c[3]), '14-15,11-13,8-10,5-7');
+assert.strictEqual(S.FORMS.g3_off.c[1].max, 20); assert.strictEqual(rng(S.FORMS.g3_off.c[1]), '19-20,15-18,5-14,1-4');
+assert.strictEqual(ctx.calcScore('g3_off', {}, { lv: [0, 0, 0, 0, 0, 0], sc: [20, 20, 15, 10, 15, 10] }).full, 100);
+
 // 7) Scoring.gs กับ ScoringClient.html ต้องตรงกัน
 const body = s => s.slice(s.indexOf('var SCORING'), s.lastIndexOf('}') + 1);
 assert.strictEqual(body(fs.readFileSync(path.join(root, 'src/ScoringClient.html'), 'utf8')), body(gs), 'ScoringClient.html ไม่ตรงกับ Scoring.gs');

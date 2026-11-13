@@ -1,6 +1,12 @@
 # Changelog
 รูปแบบ: วันที่ · สิ่งที่เปลี่ยน · ไฟล์ที่ต้องวางทับ / SQL ที่ต้องรัน
 
+## 2026-11-13 — แบบฟอร์มธุรการ/เจ้าหน้าที่ เต็ม 100 (ตาม formEdit2Oper.xlsx)
+- เกรด 2 · ธุรการ (g2_adm): ข้อ 4 การจัดลำดับความสำคัญของงาน เต็ม 10 → **15** (14–15 · 11–13 · 8–10 · 5–7)
+- เกรด 3 · เจ้าหน้าที่ (g3_off): ข้อ 2 ความรอบรู้และมีทักษะในงานที่ทำ เต็ม 15 → **20** (19–20 · 15–18 · 5–14 · 1–4)
+- ทุกแบบฟอร์มรวม 100 แล้ว (หน้าแบบฟอร์ม/แบบประเมิน/รายงานใช้ค่าเดียวกันจาก Scoring) · ไม่มีแบบประเมินที่ให้คะแนนแล้วได้รับผลกระทบ
+- ไฟล์: `Scoring.gs`, `ScoringClient.html`, `App.html` → deploy อัตโนมัติเมื่อ push main · ไม่มี SQL
+
 ## 2026-11-13 — Deploy อัตโนมัติด้วย GitHub Actions + clasp
 - `.github/workflows/deploy-gas.yml`: push เข้า main → เทส → `clasp push` → Deploy New version (URL เดิม)
 - ตั้งค่าครั้งเดียว: Secret `CLASPRC_JSON`, Variables `GAS_SCRIPT_ID`, `GAS_DEPLOYMENT_ID` — ดู docs/DEPLOY.md
