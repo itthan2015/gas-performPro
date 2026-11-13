@@ -4,7 +4,7 @@ Web App บน **Google Apps Script** เก็บข้อมูลใน **Sup
 
 ## โครงสร้าง repo
 ```
-src/              โค้ด Apps Script (push ด้วย clasp หรือวางทีละไฟล์)
+src/              โค้ด Apps Script (push เข้า main → deploy อัตโนมัติ, ดู docs/DEPLOY.md)
   Code.gs           เซิร์ฟเวอร์: Supabase REST, สิทธิ์, API ทั้งหมด
   Scoring.gs        กฎคิดคะแนน/เกรด/แบบฟอร์ม/สายอนุมัติ (ต้นฉบับ)
   ScoringClient.html สำเนา Scoring.gs สำหรับหน้าเว็บ — แก้ต้องแก้คู่กันเสมอ
@@ -28,10 +28,13 @@ data-private/     ข้อมูลพนักงานจริง — อย
 
 รายละเอียดเต็ม: [docs/SETUP.md](docs/SETUP.md) · กระบวนการ: [docs/PROCESS.md](docs/PROCESS.md)
 
-## ใช้ clasp (แนะนำ)
+## Deploy (แนะนำ: อัตโนมัติ)
+push เข้า `main` แล้ว GitHub Actions จะ `clasp push` + Deploy New version ให้เอง — ตั้งค่าครั้งเดียวตาม [docs/DEPLOY.md](docs/DEPLOY.md)
+
+หรือ push จากเครื่องตัวเอง:
 ```bash
-npm i -g @google/clasp && clasp login
-cp .clasp.json.example .clasp.json   # ใส่ scriptId ของโปรเจกต์
-clasp push                           # อัปโหลด src/ ขึ้น Apps Script
-clasp deploy -i <deploymentId>       # อัปเดต Web app เดิมเป็นเวอร์ชันใหม่
+npx @google/clasp@2.4.2 login
+cp .clasp.json.example .clasp.json            # ใส่ scriptId ของโปรเจกต์
+npx @google/clasp@2.4.2 push --force          # อัปโหลด src/ ขึ้น Apps Script
+npx @google/clasp@2.4.2 deploy -i <deploymentId>   # อัปเดต Web app เดิมเป็นเวอร์ชันใหม่
 ```

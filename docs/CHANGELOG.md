@@ -1,6 +1,10 @@
 # Changelog
 รูปแบบ: วันที่ · สิ่งที่เปลี่ยน · ไฟล์ที่ต้องวางทับ / SQL ที่ต้องรัน
 
+## 2026-11-13 — Deploy อัตโนมัติด้วย GitHub Actions + clasp
+- `.github/workflows/deploy-gas.yml`: push เข้า main → เทส → `clasp push` → Deploy New version (URL เดิม)
+- ตั้งค่าครั้งเดียว: Secret `CLASPRC_JSON`, Variables `GAS_SCRIPT_ID`, `GAS_DEPLOYMENT_ID` — ดู docs/DEPLOY.md
+
 ## 2026-11-13 — เกณฑ์เกรด 4 ระดับ + โควต้า
 - เกรด 1–3 ใช้เกณฑ์ของรอบ (`eval_cycles.grade_cfg`) ค่าเริ่มต้น A ≥ 85 · B 75–84.99 · C 70–74.99 · D < 70 · เกรด 4–5 คงสเกล 5…1
 - โควต้าต่อกลุ่มผู้ประเมิน A 20% · B 50% · C 30% · D ไม่จำกัด (ปัดเศษ ≥ .5 ขึ้น, แยกกันเด็ดขาด) · เกินโควต้า → ส่งไม่ได้

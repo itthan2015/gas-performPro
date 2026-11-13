@@ -38,3 +38,7 @@
 2. ถ้าแก้ schema → เพิ่มไฟล์ migration ใหม่ใน `sql/` (เลขถัดไป, รันซ้ำได้: `if not exists` / `on conflict`) และแก้ `00_schema.sql` ให้ติดตั้งใหม่ได้ครบ
 3. อัปเดต docs/CHANGELOG.md (วันที่ ISO + ไฟล์ที่ต้องวางทับ) และหน้า Help ใน App.html ถ้ากระทบผู้ใช้
 4. บอกผู้ใช้เสมอ: ไฟล์ไหนต้องวางทับ, SQL ไหนต้องรัน, ต้อง Deploy **New version**
+
+## Deploy
+- push เข้า `main` (ไฟล์ใน `src/`) → GitHub Actions `deploy-gas.yml`: เทส → `clasp push --force` (clasp 2.4.2) → Deploy New version ถ้าตั้ง `GAS_DEPLOYMENT_ID` · ตั้งค่า: docs/DEPLOY.md
+- `src/` คือต้นฉบับเดียว — ไฟล์ที่ไม่มีใน `src/` จะถูกลบจาก Apps Script · SQL ยังต้องรันเอง
